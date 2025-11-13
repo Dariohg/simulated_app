@@ -1,0 +1,25 @@
+name: simulated_app
+description: Una app que simula la integración del paquete sentiment_analyzer.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # Esta es la línea más importante.
+  # Debe estar alineada con 'flutter:' y 'cupertino_icons:'
+  sentiment_analyzer:
+    path: packages/sentiment_analyzer
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

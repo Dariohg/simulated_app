@@ -1,0 +1,24 @@
+# pubspec.yaml
+
+name: sentiment_analyzer
+description: Un paquete de Flutter para el análisis de sentimientos mediante detección de malla facial.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0' # Hacemos el SDK un poco más flexible
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Dependencias de lógica
+  provider: ^6.1.2
+  camera: ^0.10.5+9
+  google_mlkit_face_mesh_detection: ^0.4.1
+  google_mlkit_commons: ^0.11.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0

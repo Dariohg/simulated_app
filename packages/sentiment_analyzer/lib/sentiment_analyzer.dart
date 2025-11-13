@@ -1,0 +1,1 @@
+export 'src/sentiment_analysis_manager.dart';
