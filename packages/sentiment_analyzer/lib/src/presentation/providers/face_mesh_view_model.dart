@@ -1,139 +1,183 @@
 import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_mesh_detection/google_mlkit_face_mesh_detection.dart';
-import 'package:google_mlkit_commons/google_mlkit_commons.dart';
+import 'package:image/image.dart' as img; // Para procesar recorte
+
 import '../../services/camera_service.dart';
 import '../../services/face_mesh_service.dart';
-import '../../services/network_service.dart';
+import '../../services/emotion_service.dart';
+import '../../utils/image_utils.dart';
+
+import '../../logic/drowsiness_analyzer.dart';
+import '../../logic/attention_analyzer.dart';
+import '../../logic/emotion_analyzer.dart';
+import '../../logic/state_aggregator.dart';
 
 class FaceMeshViewModel extends ChangeNotifier {
   final CameraService _cameraService;
   final FaceMeshService _faceMeshService;
-  final NetworkService _networkService;
+  final EmotionService _emotionService = EmotionService(); // Nuevo servicio
+
+  final DrowsinessAnalyzer _drowsinessAnalyzer = DrowsinessAnalyzer();
+  final AttentionAnalyzer _attentionAnalyzer = AttentionAnalyzer();
+  final EmotionAnalyzer _emotionAnalyzer = EmotionAnalyzer();
+  final StateAggregator _stateAggregator = StateAggregator();
 
   bool _isInitialized = false;
-  bool get isInitialized => _isInitialized;
+  CombinedState? _lastState;
 
+  bool get isInitialized => _isInitialized;
+  CombinedState? get currentState => _lastState;
   CameraController? get cameraController => _cameraService.controller;
 
-  // List<FaceMesh> _faceMeshes = [];
-  // Size? _imageSize;
-
   StreamSubscription<bool>? _cameraReadySubscription;
+  bool _isProcessing = false;
 
-  final Stopwatch _logStopwatch = Stopwatch();
-  bool _isLogPending = false;
+  // Control de frames para no saturar el modelo de emociones
+  int _frameCount = 0;
+  final int _processEmotionEveryNFrames = 5; // Simular config Python
 
   FaceMeshViewModel({
     required CameraService cameraService,
     required FaceMeshService faceMeshService,
-    required NetworkService networkService,
   })  : _cameraService = cameraService,
-        _faceMeshService = faceMeshService,
-        _networkService = networkService {
+        _faceMeshService = faceMeshService {
     initialize();
-    _logStopwatch.start();
   }
 
   Future<void> initialize() async {
+    print("[INFO] Inicializando componentes...");
+
+    // Cargar modelo TFLite
+    await _emotionService.loadModel();
+
     _cameraReadySubscription = _cameraService.onCameraReady.listen((isReady) {
       if (isReady) {
         _isInitialized = true;
-        _cameraService.startImageStream(_onImageFrame);
+        _cameraService.startImageStream(_processFrame);
         notifyListeners();
-      } else {
-        _isInitialized = false;
-        notifyListeners();
+        print("[INFO] Sistema iniciado correctamente");
       }
     });
 
     try {
       await _cameraService.initializeCamera();
     } catch (e) {
-      debugPrint("Error en ViewModel al inicializar cámara: $e");
-      _isInitialized = false;
+      print("[ERROR] No se pudo acceder a la camara: $e");
+    }
+  }
+
+  void _processFrame(CameraImage image) async {
+    if (_isProcessing) return;
+    _isProcessing = true;
+    _frameCount++;
+
+    final inputImage = _convertCameraImageToInputImage(image);
+    if (inputImage == null) {
+      _isProcessing = false;
+      return;
+    }
+
+    // 1. Detectar Malla Facial (Rápido)
+    final meshes = await _faceMeshService.processImage(inputImage);
+
+    if (meshes.isNotEmpty) {
+      final mesh = meshes.first;
+      List<FaceMeshPoint> points = List.generate(468, (index) =>
+          mesh.points.firstWhere((p) => p.index == index, orElse: () => FaceMeshPoint(index: index, x: 0, y: 0, z: 0))
+      );
+
+      // 2. Analizar Geometría (Somnolencia y Atención)
+      final drowsiness = _drowsinessAnalyzer.analyze(points);
+      final attention = _attentionAnalyzer.analyze(points);
+
+      // 3. Analizar Emociones (Más lento, solo cada N frames)
+      EmotionResult? emotionResult = _lastState?.emotion;
+
+      if (_frameCount % _processEmotionEveryNFrames == 0) {
+        // Convertir YUV a RGB para el modelo
+        img.Image? convertedImage = ImageUtils.convertCameraImage(image);
+
+        if (convertedImage != null) {
+          // Obtener Bounding Box de la cara desde la malla
+          final rect = mesh.boundingBox;
+
+          // Pre-procesar (Recortar y Resize)
+          final modelInput = ImageUtils.processFaceForModel(
+              convertedImage,
+              rect.left.toInt(),
+              rect.top.toInt(),
+              rect.width.toInt(),
+              rect.height.toInt()
+          );
+
+          if (modelInput != null) {
+            // Inferencia TFLite
+            final probabilities = await _emotionService.predict(modelInput);
+            if (probabilities.isNotEmpty) {
+              emotionResult = _emotionAnalyzer.analyze(probabilities);
+            }
+          }
+        }
+      }
+
+      // 4. Agregar Estado Final
+      _lastState = _stateAggregator.aggregate(
+        drowsiness: drowsiness,
+        attention: attention,
+        emotion: emotionResult,
+        isCalibrating: !_attentionAnalyzer.isCalibrated,
+      );
+
       notifyListeners();
     }
+
+    _isProcessing = false;
   }
 
-  void _onImageFrame(CameraImage image) {
-    final InputImage? inputImage = _convertCameraImage(image);
-    if (inputImage == null) return;
-
-    _faceMeshService.processImage(inputImage).then((meshes) {
-      if (meshes.isNotEmpty) {
-        _logDataToConsole(meshes);
-      }
-    });
-  }
-
-  void _logDataToConsole(List<FaceMesh> meshes) {
-    const int throttleMilliseconds = 1000;
-    if (!_isLogPending &&
-        _logStopwatch.elapsedMilliseconds > throttleMilliseconds) {
-      _isLogPending = true;
-      _logStopwatch.reset();
-
-      _networkService.logMeshDaTA(meshes);
-
-      _isLogPending = false;
-    }
-  }
-
-  InputImage? _convertCameraImage(CameraImage image) {
+  // Método auxiliar interno para ML Kit (InputImage)
+  InputImage? _convertCameraImageToInputImage(CameraImage image) {
     final camera = _cameraService.cameraDescription;
     if (camera == null) return null;
 
-    final writeBuffer = WriteBuffer();
+    final allBytes = WriteBuffer();
     for (final Plane plane in image.planes) {
-      writeBuffer.putUint8List(plane.bytes);
+      allBytes.putUint8List(plane.bytes);
     }
-    final bytes = writeBuffer.done().buffer.asUint8List();
+    final bytes = allBytes.done().buffer.asUint8List();
 
-    final imageRotation = _getInputImageRotation(camera.sensorOrientation);
+    final imageRotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation)
+        ?? InputImageRotation.rotation0deg;
 
-    final inputImageFormat =
-        InputImageFormatValue.fromRawValue(image.format.raw) ??
-            InputImageFormat.nv21;
+    final inputImageFormat = InputImageFormatValue.fromRawValue(image.format.raw)
+        ?? InputImageFormat.nv21;
 
-    try {
-      return InputImage.fromBytes(
-        bytes: bytes,
-        metadata: InputImageMetadata(
-          size: Size(image.width.toDouble(), image.height.toDouble()),
-          rotation: imageRotation,
-          format: inputImageFormat,
-          bytesPerRow: image.planes.isNotEmpty ? image.planes[0].bytesPerRow : 0,
-        ),
-      );
-    } catch (e) {
-      debugPrint("Error al convertir imagen: $e");
-      return null;
-    }
+    return InputImage.fromBytes(
+      bytes: bytes,
+      metadata: InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: imageRotation,
+        format: inputImageFormat,
+        bytesPerRow: image.planes[0].bytesPerRow,
+      ),
+    );
   }
 
-  InputImageRotation _getInputImageRotation(int sensorOrientation) {
-    switch (sensorOrientation) {
-      case 0:
-        return InputImageRotation.rotation0deg;
-      case 90:
-        return InputImageRotation.rotation90deg;
-      case 180:
-        return InputImageRotation.rotation180deg;
-      case 270:
-        return InputImageRotation.rotation270deg;
-      default:
-        return InputImageRotation.rotation0deg;
-    }
+  void recalibrate() {
+    _attentionAnalyzer.resetCalibration();
+    _emotionAnalyzer.reset();
+    print("[INFO] Recalibrando... mire a la pantalla");
   }
 
   @override
   void dispose() {
+    print("[INFO] Cerrando sistema...");
     _cameraReadySubscription?.cancel();
     _cameraService.dispose();
     _faceMeshService.dispose();
+    _emotionService.dispose();
     super.dispose();
   }
 }

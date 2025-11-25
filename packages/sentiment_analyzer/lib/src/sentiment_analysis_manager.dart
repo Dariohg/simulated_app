@@ -1,76 +1,108 @@
-import 'package:flutter/widgets.dart';
+import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'presentation/providers/face_mesh_view_model.dart';
 import 'services/camera_service.dart';
 import 'services/face_mesh_service.dart';
-import 'services/network_service.dart';
 
-/// Un widget invisible que gestiona el ciclo de vida del análisis de sentimientos.
-///
-/// Simplemente añade este widget al árbol de widgets (por ejemplo, en un Stack)
-/// en la pantalla donde el análisis deba estar activo.
-class SentimentAnalysisManager extends StatefulWidget {
-  final String userId;
-  final String lessonId;
-
-  const SentimentAnalysisManager({
-    super.key,
-    required this.userId,
-    required this.lessonId,
-    // Aquí puedes añadir más parámetros, como callbacks:
-    // final Function(String)? onEmotionDetected,
-  });
-
-  @override
-  State<SentimentAnalysisManager> createState() =>
-      _SentimentAnalysisManagerState();
-}
-
-class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
-  // Aquí creamos los servicios. Vivirán mientras este widget viva.
-  late final CameraService _cameraService;
-  late final FaceMeshService _faceMeshService;
-  late final NetworkService _networkService;
-  late final FaceMeshViewModel _viewModel;
-
-  @override
-  void initState() {
-    super.initState();
-
-    // 1. Instanciamos todos los servicios
-    _cameraService = CameraService();
-    _faceMeshService = FaceMeshService();
-    _networkService = NetworkService(); // Pasará el userId y lessonId al JSON
-
-    // 2. Creamos el ViewModel que los orquesta a todos
-    _viewModel = FaceMeshViewModel(
-      cameraService: _cameraService,
-      faceMeshService: _faceMeshService,
-      networkService: _networkService,
-    );
-
-    // NOTA: El ViewModel (gracias a su método 'initialize()')
-    // se encargará automáticamente de pedir permisos de cámara,
-    // encenderla y empezar el stream.
-  }
-
-  @override
-  void dispose() {
-    // 3. Cuando la App 1 quita este widget (sale de la lección),
-    // limpiamos todo y apagamos la cámara.
-    _viewModel.dispose();
-    super.dispose();
-  }
+class SentimentAnalysisManager extends StatelessWidget {
+  const SentimentAnalysisManager({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // 4. El widget en sí es invisible.
-    // Usamos un ChangeNotifierProvider para mantener vivo el ViewModel
-    // sin necesidad de exponerlo al resto de la app.
-    return ChangeNotifierProvider.value(
-      value: _viewModel,
-      // SizedBox.shrink() es un widget vacío que no ocupa espacio y dibuja nada.
-      child: const SizedBox.shrink(),
+    return ChangeNotifierProvider(
+      create: (_) => FaceMeshViewModel(
+        cameraService: CameraService(),
+        faceMeshService: FaceMeshService(),
+      ),
+      child: const _AnalysisOverlay(),
     );
+  }
+}
+
+class _AnalysisOverlay extends StatelessWidget {
+  const _AnalysisOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    final viewModel = context.watch<FaceMeshViewModel>();
+
+    if (!viewModel.isInitialized || viewModel.cameraController == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Stack(
+      children: [
+        // Camera Layer
+        Positioned(
+          right: 16,
+          bottom: 16,
+          width: 120,
+          height: 160,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: CameraPreview(viewModel.cameraController!),
+          ),
+        ),
+
+        // Info Layer
+        if (viewModel.currentState != null)
+          Positioned(
+            right: 16,
+            bottom: 180,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    viewModel.currentState!.finalState.toUpperCase(),
+                    style: TextStyle(
+                      color: _getColorForState(viewModel.currentState!.finalState),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  if (viewModel.currentState!.isCalibrating)
+                    const Text(
+                      "CALIBRANDO...",
+                      style: TextStyle(color: Colors.yellow, fontSize: 10),
+                    ),
+                  Text(
+                    "EAR: ${viewModel.currentState!.drowsiness?.ear.toStringAsFixed(2) ?? '0.0'}",
+                    style: const TextStyle(color: Colors.white, fontSize: 10),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        // Calibration Button
+        Positioned(
+          right: 140,
+          bottom: 16,
+          child: IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            onPressed: viewModel.recalibrate,
+            tooltip: 'Recalibrar',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Color _getColorForState(String state) {
+    switch (state) {
+      case 'concentrado': return Colors.green;
+      case 'distraido': return Colors.orange;
+      case 'durmiendo': return Colors.purple;
+      case 'no_mirando': return Colors.grey;
+      case 'frustrado': return Colors.red;
+      default: return Colors.white;
+    }
   }
 }

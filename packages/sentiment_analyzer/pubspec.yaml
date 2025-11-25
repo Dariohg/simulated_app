@@ -1,24 +1,38 @@
-# pubspec.yaml
-
 name: sentiment_analyzer
 description: Un paquete de Flutter para el análisis de sentimientos mediante detección de malla facial.
 publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0' # Hacemos el SDK un poco más flexible
+  sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
 
-  # Dependencias de lógica
+  # --- Gestión de Estado ---
   provider: ^6.1.2
+
+  # --- Cámara y Visión (Reemplazo de OpenCV/MediaPipe) ---
   camera: ^0.10.5+9
   google_mlkit_face_mesh_detection: ^0.4.1
   google_mlkit_commons: ^0.11.0
+
+  # --- Inteligencia Artificial (Reemplazo de PyTorch) ---
+  # Para correr el modelo .tflite de emociones
+  tflite_flutter: ^0.10.4
+
+  # --- Procesamiento de Imágenes (Reemplazo de NumPy/OpenCV) ---
+  # Para recortar la cara, redimensionar y convertir formatos
+  image: ^4.1.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+
+# --- IMPORTANTE: Declaración de Assets ---
+# Esto es necesario para que Flutter empaquete tu modelo dentro de la app
+flutter:
+  assets:
+    - assets/emotion_model.tflite
