@@ -6,7 +6,15 @@ import 'services/camera_service.dart';
 import 'services/face_mesh_service.dart';
 
 class SentimentAnalysisManager extends StatelessWidget {
-  const SentimentAnalysisManager({super.key});
+  // Corrección: Agregamos los parámetros que pide tu pantalla de lección
+  final String userId;
+  final String lessonId;
+
+  const SentimentAnalysisManager({
+    super.key,
+    required this.userId,
+    required this.lessonId,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -25,15 +33,17 @@ class _AnalysisOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Escuchamos los cambios del ViewModel
     final viewModel = context.watch<FaceMeshViewModel>();
 
+    // Si la cámara no está lista, no mostramos nada para evitar errores
     if (!viewModel.isInitialized || viewModel.cameraController == null) {
       return const SizedBox.shrink();
     }
 
     return Stack(
       children: [
-        // Camera Layer
+        // 1. Capa de la Cámara (Pequeña en la esquina)
         Positioned(
           right: 16,
           bottom: 16,
@@ -45,11 +55,11 @@ class _AnalysisOverlay extends StatelessWidget {
           ),
         ),
 
-        // Info Layer
+        // 2. Capa de Información (Estados detectados)
         if (viewModel.currentState != null)
           Positioned(
             right: 16,
-            bottom: 180,
+            bottom: 180, // Justo encima de la cámara
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -59,6 +69,7 @@ class _AnalysisOverlay extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  // Estado Principal (DURMIENDO, CONCENTRADO, ETC.)
                   Text(
                     viewModel.currentState!.finalState.toUpperCase(),
                     style: TextStyle(
@@ -67,11 +78,13 @@ class _AnalysisOverlay extends StatelessWidget {
                       fontSize: 14,
                     ),
                   ),
+                  // Indicador de calibración
                   if (viewModel.currentState!.isCalibrating)
                     const Text(
                       "CALIBRANDO...",
                       style: TextStyle(color: Colors.yellow, fontSize: 10),
                     ),
+                  // Métricas técnicas (opcional, útil para depurar)
                   Text(
                     "EAR: ${viewModel.currentState!.drowsiness?.ear.toStringAsFixed(2) ?? '0.0'}",
                     style: const TextStyle(color: Colors.white, fontSize: 10),
@@ -81,23 +94,25 @@ class _AnalysisOverlay extends StatelessWidget {
             ),
           ),
 
-        // Calibration Button
+        // 3. Botón de Recalibración
         Positioned(
           right: 140,
           bottom: 16,
           child: IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: viewModel.recalibrate,
-            tooltip: 'Recalibrar',
+            tooltip: 'Recalibrar posición',
           ),
         ),
       ],
     );
   }
 
+  // Ayudante para colores según el estado
   Color _getColorForState(String state) {
     switch (state) {
       case 'concentrado': return Colors.green;
+      case 'entendiendo': return Colors.greenAccent;
       case 'distraido': return Colors.orange;
       case 'durmiendo': return Colors.purple;
       case 'no_mirando': return Colors.grey;

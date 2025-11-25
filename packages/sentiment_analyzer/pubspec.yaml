@@ -20,7 +20,7 @@ dependencies:
 
   # --- Inteligencia Artificial (Reemplazo de PyTorch) ---
   # Para correr el modelo .tflite de emociones
-  tflite_flutter: ^0.10.4
+  tflite_flutter: ^0.11.0
 
   # --- Procesamiento de Imágenes (Reemplazo de NumPy/OpenCV) ---
   # Para recortar la cara, redimensionar y convertir formatos
