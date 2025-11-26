@@ -1,266 +1,118 @@
 import 'dart:typed_data';
 import 'dart:math';
-import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 
-/// Servicio para inferencia del modelo de emociones TFLite.
-///
-/// El modelo es HSEmotion (EfficientNet-B0) entrenado en AffectNet.
-/// - Input: [1, 224, 224, 3] - imagen RGB normalizada con ImageNet stats
-/// - Output: [1, 8] - probabilidades de 8 emociones
-///
-/// Orden de salida: Anger, Contempt, Disgust, Fear, Happiness, Neutral, Sadness, Surprise
 class EmotionService {
   Interpreter? _interpreter;
   bool _isBusy = false;
   bool _isModelLoaded = false;
 
-  List<int>? _inputShape;
-  List<int>? _outputShape;
+  // Getters necesarios para FaceMeshViewModel
+  bool get isModelLoaded => _isModelLoaded;
 
-  // Estadísticas para debug
+  // Estadísticas para getStats()
   int _inferenceCount = 0;
   int _successCount = 0;
   int _errorCount = 0;
   double _lastInferenceTimeMs = 0;
 
-  bool get isModelLoaded => _isModelLoaded;
-  double get lastInferenceTimeMs => _lastInferenceTimeMs;
+  // Shapes
+  List<int> _inputShape = [1, 224, 224, 3];
+  List<int> _outputShape = [1, 8];
 
-  /// Carga el modelo TFLite desde los assets
+  // Labels en el orden EXACTO de tu emotion_classifier.py
+  static const List<String> LABELS = [
+    'Anger', 'Contempt', 'Disgust', 'Fear',
+    'Happiness', 'Neutral', 'Sadness', 'Surprise'
+  ];
+
   Future<void> loadModel() async {
-    print('[EmotionService] ========================================');
-    print('[EmotionService] Iniciando carga del modelo de emociones');
-    print('[EmotionService] ========================================');
-
     try {
-      // Intentar cargar librería Flex en Android (para operaciones especiales)
-      if (Platform.isAndroid) {
-        _tryLoadFlexLibrary();
-      }
+      final options = InterpreterOptions()..threads = 4;
+      // Carga directa del asset
+      _interpreter = await Interpreter.fromAsset(
+        'packages/sentiment_analyzer/assets/emotion_model.tflite',
+        options: options,
+      );
 
-      // Ruta del modelo en assets
-      final modelPath = 'packages/sentiment_analyzer/assets/emotion_model.tflite';
+      _inputShape = _interpreter!.getInputTensor(0).shape;
+      _outputShape = _interpreter!.getOutputTensor(0).shape;
+      _isModelLoaded = true;
 
-      print('[EmotionService] Cargando modelo desde: $modelPath');
-
-      // Cargar modelo como bytes
-      final modelData = await rootBundle.load(modelPath);
-      final buffer = modelData.buffer.asUint8List();
-
-      print('[EmotionService] Modelo leído: ${buffer.length} bytes '
-          '(${(buffer.length / 1024 / 1024).toStringAsFixed(2)} MB)');
-
-      // Configurar opciones del intérprete
-      final options = InterpreterOptions()
-        ..threads = 4;  // Usar 4 hilos para mejor rendimiento
-
-      // Crear intérprete desde buffer
-      _interpreter = Interpreter.fromBuffer(buffer, options: options);
-
-      if (_interpreter != null) {
-        _isModelLoaded = true;
-
-        // Obtener información de tensores
-        final inputTensors = _interpreter!.getInputTensors();
-        final outputTensors = _interpreter!.getOutputTensors();
-
-        _inputShape = inputTensors.first.shape;
-        _outputShape = outputTensors.first.shape;
-
-        print('[EmotionService] ✓ Modelo cargado exitosamente');
-        print('[EmotionService] Input tensor:');
-        print('[EmotionService]   - Shape: $_inputShape');
-        print('[EmotionService]   - Type: ${inputTensors.first.type}');
-        print('[EmotionService] Output tensor:');
-        print('[EmotionService]   - Shape: $_outputShape');
-        print('[EmotionService]   - Type: ${outputTensors.first.type}');
-
-        // Validar shapes esperados
-        _validateModelShapes();
-      }
-    } catch (e, stackTrace) {
-      _isModelLoaded = false;
-      print('[EmotionService] ✗ ERROR FATAL al cargar modelo:');
-      print('[EmotionService] Error: $e');
-      print('[EmotionService] StackTrace: $stackTrace');
-    }
-  }
-
-  /// Intenta cargar la librería TensorFlow Flex para operaciones especiales
-  void _tryLoadFlexLibrary() {
-    try {
-      // La librería Flex permite operaciones de TF que no están en TFLite estándar
-      // Nota: Esto puede no ser necesario si el modelo fue convertido correctamente
-      print('[EmotionService] Plataforma Android detectada');
-      // DynamicLibrary.open('libtensorflowlite_flex_jni.so');
-      // print('[EmotionService] ✓ Librería Flex cargada');
+      print('[EmotionService] Modelo cargado. Input: $_inputShape, Output: $_outputShape');
     } catch (e) {
-      print('[EmotionService] Nota: No se cargó librería Flex (puede no ser necesaria): $e');
+      print('[EmotionService] Error cargando modelo: $e');
+      _isModelLoaded = false;
     }
   }
 
-  /// Valida que los shapes del modelo sean los esperados
-  void _validateModelShapes() {
-    // Input esperado: [1, 224, 224, 3]
-    if (_inputShape != null) {
-      if (_inputShape!.length != 4 ||
-          _inputShape![0] != 1 ||
-          _inputShape![1] != 224 ||
-          _inputShape![2] != 224 ||
-          _inputShape![3] != 3) {
-        print('[EmotionService] ⚠ ADVERTENCIA: Input shape inesperado');
-        print('[EmotionService] Esperado: [1, 224, 224, 3]');
-        print('[EmotionService] Actual: $_inputShape');
-      }
-    }
-
-    // Output esperado: [1, 8]
-    if (_outputShape != null) {
-      if (_outputShape!.length != 2 ||
-          _outputShape![0] != 1 ||
-          _outputShape![1] != 8) {
-        print('[EmotionService] ⚠ ADVERTENCIA: Output shape inesperado');
-        print('[EmotionService] Esperado: [1, 8]');
-        print('[EmotionService] Actual: $_outputShape');
-      }
-    }
-  }
-
-  /// Ejecuta inferencia sobre una imagen preprocesada
-  ///
-  /// [input] debe ser Float32List de tamaño 1*224*224*3 = 150528
-  /// con valores normalizados usando estadísticas ImageNet
-  ///
-  /// Retorna lista de 8 probabilidades (una por emoción)
   Future<List<double>> predict(Float32List input) async {
-    if (_interpreter == null || !_isModelLoaded) {
-      print('[EmotionService] Modelo no cargado, ignorando predicción');
-      return [];
-    }
+    if (_interpreter == null || !_isModelLoaded) return [];
 
-    if (_isBusy) {
-      // No loguear esto ya que puede ser muy frecuente
-      return [];
-    }
+    // Si está ocupado, retornamos vacío para no bloquear, pero no cuenta como error
+    if (_isBusy) return [];
 
     _isBusy = true;
     _inferenceCount++;
     final stopwatch = Stopwatch()..start();
 
     try {
-      // Validar tamaño de entrada
-      final expectedSize = 1 * 224 * 224 * 3; // 150528
-      if (input.length != expectedSize) {
-        print('[EmotionService] Error: Tamaño de entrada incorrecto');
-        print('[EmotionService] Esperado: $expectedSize, Recibido: ${input.length}');
+      // 1. Validar entrada (224*224*3 = 150528 floats)
+      if (input.length != 150528) {
+        print('[EmotionService] Error: Tamaño de entrada incorrecto: ${input.length}');
         _errorCount++;
         return [];
       }
 
-      // Crear buffer de salida
-      int outputSize = _outputShape?.last ?? 8;
-      var outputBuffer = List<List<double>>.generate(
-        1,
-            (_) => List<double>.filled(outputSize, 0.0),
-      );
+      // 2. Preparar salida
+      // Usamos un buffer plano para evitar asignaciones de memoria costosas
+      var outputBuffer = List<double>.filled(8, 0).reshape([1, 8]);
 
-      // Reshape input de [150528] a [1, 224, 224, 3]
-      var inputReshaped = _reshapeInput(input);
-
-      // Ejecutar inferencia
-      _interpreter!.run(inputReshaped, outputBuffer);
+      // 3. Inferencia
+      // IMPORTANTE: Pasamos input.buffer para que sea tratado como ByteBuffer
+      // y evitamos el reshape manual costoso de Dart.
+      _interpreter!.run(input.reshape([1, 224, 224, 3]), outputBuffer);
 
       stopwatch.stop();
       _lastInferenceTimeMs = stopwatch.elapsedMicroseconds / 1000.0;
 
-      // Extraer resultados
+      // 4. Procesar resultados
       List<double> rawOutput = List<double>.from(outputBuffer[0]);
 
-      // Verificar si necesitamos aplicar softmax
-      // (el modelo puede devolver logits o probabilidades)
+      // Verificar Softmax (igual que en Python logits=False)
       double sum = rawOutput.fold(0.0, (a, b) => a + b);
-
       List<double> probabilities;
-      if (sum.abs() < 0.99 || sum.abs() > 1.01) {
-        // Los valores no suman 1, probablemente son logits -> aplicar softmax
+
+      // Si la suma difiere mucho de 1.0, asumimos logits y aplicamos softmax
+      if (sum < 0.99 || sum > 1.01) {
         probabilities = _softmax(rawOutput);
       } else {
-        // Ya son probabilidades
         probabilities = rawOutput;
       }
 
       _successCount++;
-
-      // Log de debug periódico
-      if (_inferenceCount % 30 == 0) {
-        print('[EmotionService] Inferencia #$_inferenceCount');
-        print('[EmotionService] Tiempo: ${_lastInferenceTimeMs.toStringAsFixed(2)}ms');
-        print('[EmotionService] Éxitos: $_successCount, Errores: $_errorCount');
-        _logProbabilities(probabilities);
-      }
-
       return probabilities;
-    } catch (e, stackTrace) {
+
+    } catch (e) {
+      print('[EmotionService] Error en inferencia: $e');
       _errorCount++;
-      print('[EmotionService] ERROR en inferencia #$_inferenceCount: $e');
-      if (_errorCount <= 3) {
-        print('[EmotionService] StackTrace: $stackTrace');
-      }
       return [];
     } finally {
       _isBusy = false;
     }
   }
 
-  /// Reshape de Float32List plano a tensor [1, 224, 224, 3]
-  List<List<List<List<double>>>> _reshapeInput(Float32List flat) {
-    return List.generate(1, (b) {
-      return List.generate(224, (h) {
-        return List.generate(224, (w) {
-          return List.generate(3, (c) {
-            int index = h * 224 * 3 + w * 3 + c;
-            return flat[index];
-          });
-        });
-      });
-    });
-  }
-
-  /// Aplica softmax a una lista de logits
   List<double> _softmax(List<double> logits) {
     if (logits.isEmpty) return [];
-
-    // Restar el máximo para estabilidad numérica
-    double maxVal = logits.reduce((a, b) => a > b ? a : b);
+    double maxVal = logits.reduce(max);
     List<double> expVals = logits.map((x) => exp(x - maxVal)).toList();
     double sumExp = expVals.reduce((a, b) => a + b);
-
     if (sumExp == 0) return List.filled(logits.length, 1.0 / logits.length);
-
     return expVals.map((x) => x / sumExp).toList();
   }
 
-  /// Log de probabilidades para debug
-  void _logProbabilities(List<double> probs) {
-    const labels = ['Anger', 'Contempt', 'Disgust', 'Fear',
-      'Happiness', 'Neutral', 'Sadness', 'Surprise'];
-
-    // Crear lista de pares (label, prob) y ordenar por probabilidad
-    var pairs = <MapEntry<String, double>>[];
-    for (int i = 0; i < probs.length && i < labels.length; i++) {
-      pairs.add(MapEntry(labels[i], probs[i] * 100));
-    }
-    pairs.sort((a, b) => b.value.compareTo(a.value));
-
-    print('[EmotionService] Probabilidades:');
-    for (int i = 0; i < min(3, pairs.length); i++) {
-      print('[EmotionService]   ${pairs[i].key}: ${pairs[i].value.toStringAsFixed(1)}%');
-    }
-  }
-
-  /// Obtiene estadísticas del servicio
+  /// Método requerido por FaceMeshViewModel para mostrar debug
   Map<String, dynamic> getStats() {
     return {
       'isLoaded': _isModelLoaded,
@@ -271,17 +123,13 @@ class EmotionService {
           ? (_successCount / _inferenceCount * 100).toStringAsFixed(1)
           : 'N/A',
       'lastInferenceMs': _lastInferenceTimeMs.toStringAsFixed(2),
-      'inputShape': _inputShape?.toString() ?? 'N/A',
-      'outputShape': _outputShape?.toString() ?? 'N/A',
+      'inputShape': _inputShape.toString(),
+      'outputShape': _outputShape.toString(),
     };
   }
 
-  /// Libera recursos del intérprete
   void dispose() {
-    print('[EmotionService] Liberando recursos...');
-    print('[EmotionService] Stats finales: ${getStats()}');
     _interpreter?.close();
-    _interpreter = null;
     _isModelLoaded = false;
   }
 }
