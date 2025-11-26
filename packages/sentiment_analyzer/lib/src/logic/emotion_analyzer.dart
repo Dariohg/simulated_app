@@ -23,15 +23,8 @@ class EmotionResult {
 }
 
 /// Analizador de emociones con suavizado temporal.
-///
-/// Implementación idéntica a emotion_classifier.py de Python:
-/// - Mismo mapeo de emociones a estados cognitivos
-/// - Mismo orden de labels del modelo HSEmotion
-/// - Mismo algoritmo de suavizado por votación mayoritaria
-/// - Misma lógica de confianza promediada
 class EmotionAnalyzer {
   /// Mapeo de emoción a estado cognitivo
-  /// IDÉNTICO a emotion_classifier.py: EMOTION_TO_COGNITIVE
   static const Map<String, String> _emotionToCognitive = {
     'Anger': 'frustrado',
     'Contempt': 'frustrado',
@@ -43,22 +36,7 @@ class EmotionAnalyzer {
     'Neutral': 'concentrado',
   };
 
-  /// Labels de emociones en el ORDEN EXACTO del modelo HSEmotion (enet_b0_8_best_afew)
-  ///
-  /// CRÍTICO: Este orden DEBE coincidir con el orden de salida del modelo TFLite.
-  /// El modelo HSEmotion usa el dataset AffectNet con 8 clases en este orden:
-  ///
-  /// Según el código Python (emotion_classifier.py):
-  /// emotion_dict = {
-  ///     "Anger": scores[0],
-  ///     "Contempt": scores[1],
-  ///     "Disgust": scores[2],
-  ///     "Fear": scores[3],
-  ///     "Happiness": scores[4],
-  ///     "Neutral": scores[5],
-  ///     "Sadness": scores[6],
-  ///     "Surprise": scores[7]
-  /// }
+  /// Labels de emociones en el ORDEN EXACTO del modelo HSEmotion
   static const List<String> _emotionLabels = [
     'Anger',     // índice 0
     'Contempt',  // índice 1
@@ -85,8 +63,9 @@ class EmotionAnalyzer {
   /// Umbral mínimo de confianza para considerar una predicción válida
   final double _confidenceThreshold;
 
+  // CAMBIO 2: Reducción del historial por defecto a 10 (antes era 15)
   EmotionAnalyzer({
-    int historySize = 15,
+    int historySize = 10,
     int minHistoryForSmoothing = 3,
     double confidenceThreshold = 0.15,
   })  : _historySize = historySize,
@@ -94,9 +73,6 @@ class EmotionAnalyzer {
         _confidenceThreshold = confidenceThreshold;
 
   /// Analiza las probabilidades de salida del modelo y retorna el resultado
-  ///
-  /// [probabilities] debe ser una lista de 8 valores (uno por emoción)
-  /// en el orden definido por _emotionLabels
   EmotionResult analyze(List<double> probabilities) {
     // Validación de entrada
     if (probabilities.isEmpty) {
@@ -107,7 +83,6 @@ class EmotionAnalyzer {
     if (probabilities.length != 8) {
       print('[EmotionAnalyzer] ADVERTENCIA: Se esperaban 8 probabilidades, '
           'recibidas ${probabilities.length}');
-      // Intentar usar lo que tengamos, rellenando con ceros si es necesario
       while (probabilities.length < 8) {
         probabilities = [...probabilities, 0.0];
       }
@@ -122,7 +97,7 @@ class EmotionAnalyzer {
       final label = _emotionLabels[i];
       final prob = i < probabilities.length ? probabilities[i] : 0.0;
 
-      // Guardar como porcentaje (igual que Python: v * 100)
+      // Guardar como porcentaje
       currentScores[label] = prob * 100;
 
       if (prob > maxProb) {
@@ -134,10 +109,9 @@ class EmotionAnalyzer {
     String currentEmotion = _emotionLabels[maxIndex];
     double currentConfidence = maxProb;
 
-    // Log de debug (solo ocasionalmente para no saturar)
+    // Log de debug ocasional
     if (_emotionHistory.length % 30 == 0) {
       print('[EmotionAnalyzer] Raw: $currentEmotion (${(currentConfidence * 100).toStringAsFixed(1)}%)');
-      print('[EmotionAnalyzer] Top 3: ${_getTopEmotions(currentScores, 3)}');
     }
 
     // Si la confianza es muy baja, usar Neutral por defecto
@@ -155,12 +129,19 @@ class EmotionAnalyzer {
       _confidenceHistory.removeFirst();
     }
 
-    // 3. Aplicar suavizado temporal si hay suficiente historial
-    String smoothedEmotion = currentEmotion;
-    double smoothedConfidence = currentConfidence;
+    // 3. Determinar emoción final
+    String finalEmotion = currentEmotion;
+    double finalConfidence = currentConfidence;
 
-    if (_emotionHistory.length >= _minHistoryForSmoothing) {
-      // Votación mayoritaria (moda) - idéntico a Python
+    // CAMBIO 3: Atajo de Confianza
+    // Si la confianza actual es muy alta (> 85%), ignoramos el suavizado y usamos el valor directo.
+    if (currentConfidence > 0.85) {
+      finalEmotion = currentEmotion;
+      finalConfidence = currentConfidence;
+    }
+    // Si no es tan alta, usamos la lógica de votación (suavizado)
+    else if (_emotionHistory.length >= _minHistoryForSmoothing) {
+      // Votación mayoritaria (moda)
       final Map<String, int> emotionCounts = {};
       for (final e in _emotionHistory) {
         emotionCounts[e] = (emotionCounts[e] ?? 0) + 1;
@@ -171,25 +152,25 @@ class EmotionAnalyzer {
       for (final entry in emotionCounts.entries) {
         if (entry.value > maxCount) {
           maxCount = entry.value;
-          smoothedEmotion = entry.key;
+          finalEmotion = entry.key;
         }
       }
 
-      // Promedio de confianza - idéntico a Python: np.mean(list(self._confidence_history))
+      // Promedio de confianza
       double sumConfidence = 0;
       for (final c in _confidenceHistory) {
         sumConfidence += c;
       }
-      smoothedConfidence = sumConfidence / _confidenceHistory.length;
+      finalConfidence = sumConfidence / _confidenceHistory.length;
     }
 
     // 4. Mapear a estado cognitivo
-    final cognitiveState = _emotionToCognitive[smoothedEmotion] ?? 'concentrado';
+    final cognitiveState = _emotionToCognitive[finalEmotion] ?? 'concentrado';
 
     return EmotionResult(
-      emotion: smoothedEmotion,
+      emotion: finalEmotion,
       cognitiveState: cognitiveState,
-      confidence: smoothedConfidence,
+      confidence: finalConfidence,
       scores: currentScores,
     );
   }
@@ -204,17 +185,6 @@ class EmotionAnalyzer {
         for (var label in _emotionLabels) label: 0.0,
       },
     );
-  }
-
-  /// Obtiene las top N emociones para debug
-  String _getTopEmotions(Map<String, double> scores, int n) {
-    final sorted = scores.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    return sorted
-        .take(n)
-        .map((e) => '${e.key}: ${e.value.toStringAsFixed(1)}%')
-        .join(', ');
   }
 
   /// Resetea el historial de suavizado

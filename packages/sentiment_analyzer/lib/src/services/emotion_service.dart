@@ -29,7 +29,9 @@ class EmotionService {
 
   Future<void> loadModel() async {
     try {
-      final options = InterpreterOptions()..threads = 4;
+      // CAMBIO 1: Reducción de hilos de 4 a 2 para evitar sobrecarga
+      final options = InterpreterOptions()..threads = 2;
+
       // Carga directa del asset
       _interpreter = await Interpreter.fromAsset(
         'packages/sentiment_analyzer/assets/emotion_model.tflite',
