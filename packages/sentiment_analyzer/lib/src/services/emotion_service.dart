@@ -23,7 +23,7 @@ class EmotionService {
       // Esto soluciona el error: "Select TensorFlow op(s)... failed to prepare"
       if (Platform.isAndroid) {
         try {
-          DynamicLibrary.open('libtensorflowlite_flex_jni.so');
+          //DynamicLibrary.open('libtensorflowlite_flex_jni.so');
           print('[EmotionService] Libreria Flex cargada correctamente (JNI)');
         } catch (e) {
           print('[EmotionService] ADVERTENCIA: No se pudo cargar libtensorflowlite_flex_jni.so. '

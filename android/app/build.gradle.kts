@@ -7,7 +7,7 @@ plugins {
 android {
     namespace = "com.example.simulated_app"
     // Volvemos a 34 o 35, que son estables. No uses 36 todavía.
-    compileSdk = 35
+    compileSdk = 36
 
     // Elimina la línea ndkVersion si no tienes la 27 instalada específicamente,
     // o usa la versión por defecto estable de tu Android Studio.
@@ -57,5 +57,5 @@ flutter {
 
 dependencies {
     // MANTÉN ESTO: La librería de operaciones Flex
-    implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.16.1")
+    //implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.16.1")
 }
