@@ -1,59 +1,99 @@
 import 'drowsiness_analyzer.dart';
 import 'attention_analyzer.dart';
-import 'emotion_analyzer.dart';
-
 class CombinedState {
-  final String finalState;
+  final String cognitiveState;
+  final String emotion;
+  final double confidence;
+  final Map<String, double> emotionScores;
   final DrowsinessResult? drowsiness;
   final AttentionResult? attention;
-  final EmotionResult? emotion;
+  final String finalState;
+  final bool faceDetected;
   final bool isCalibrating;
 
   CombinedState({
-    required this.finalState,
+    required this.cognitiveState,
+    required this.emotion,
+    required this.confidence,
+    required this.emotionScores,
     this.drowsiness,
     this.attention,
-    this.emotion,
+    required this.finalState,
+    required this.faceDetected,
     required this.isCalibrating,
   });
 }
 
+/// Agregador de estados con prioridades idénticas a state_aggregator.py
+///
+/// Prioridades (de mayor a menor):
+/// 1. durmiendo    - Ojos cerrados prolongadamente
+/// 2. no_mirando   - Cabeza girada fuera del rango
+/// 3. frustrado    - Enojo, tristeza, disgusto
+/// 4. distraido    - Miedo, sorpresa, bostezando
+/// 5. concentrado  - Neutral, atento
+/// 6. entendiendo  - Feliz, comprendiendo
 class StateAggregator {
-  // Prioridades basadas en tu README.md:
-  // 1. DURMIENDO (Somnolencia)
-  // 2. NO MIRA PANTALLA (Atención)
-  // 3. FRUSTRADO (Emoción)
-  // 4. DISTRAIDO (Emoción o Bostezo)
-  // 5. CONCENTRADO (Emoción)
-  // 6. ENTENDIENDO (Emoción)
+  static const Map<String, int> statePriority = {
+    'durmiendo': 1,
+    'no_mirando': 2,
+    'frustrado': 3,
+    'distraido': 4,
+    'concentrado': 5,
+    'entendiendo': 6,
+  };
 
   CombinedState aggregate({
-    required DrowsinessResult drowsiness,
-    required AttentionResult attention,
-    EmotionResult? emotion,
-    required bool isCalibrating,
+    required bool faceDetected,
+    String cognitiveState = 'desconocido',
+    String emotion = 'Unknown',
+    double confidence = 0.0,
+    Map<String, double>? emotionScores,
+    DrowsinessResult? drowsiness,
+    AttentionResult? attention,
+    bool isCalibrating = false,
   }) {
-    String finalState = "desconocido";
-
-    // Lógica de prioridades estricta (Python logic)
-    if (drowsiness.isDrowsy) {
-      finalState = "durmiendo";
-    } else if (!attention.isLookingAtScreen) {
-      finalState = "no_mirando";
-    } else if (drowsiness.isYawning) {
-      finalState = "distraido";
-    } else if (emotion != null) {
-      // Si no hay problema físico (sueño/atención), manda la emoción
-      finalState = emotion.cognitiveState;
-    } else {
-      finalState = "concentrado"; // Default seguro
+    // Sin rostro detectado
+    if (!faceDetected) {
+      return CombinedState(
+        cognitiveState: 'desconocido',
+        emotion: 'Unknown',
+        confidence: 0.0,
+        emotionScores: emotionScores ?? {},
+        drowsiness: null,
+        attention: null,
+        finalState: 'sin_rostro',
+        faceDetected: false,
+        isCalibrating: false,
+      );
     }
 
+    // Determinar estado final según prioridades (idéntico a Python)
+    String finalState = cognitiveState;
+
+    // Prioridad 1: Somnolencia (ojos cerrados)
+    if (drowsiness != null && drowsiness.isDrowsy) {
+      finalState = 'durmiendo';
+    }
+    // Prioridad 2: No mirando pantalla
+    else if (attention != null && !attention.isLookingAtScreen) {
+      finalState = 'no_mirando';
+    }
+    // Prioridad 4: Bostezando (subconjunto de distraido)
+    else if (drowsiness != null && drowsiness.isYawning) {
+      finalState = 'distraido';
+    }
+    // Si no hay condiciones físicas especiales, usar estado cognitivo de emociones
+
     return CombinedState(
-      finalState: finalState,
+      cognitiveState: cognitiveState,
+      emotion: emotion,
+      confidence: confidence,
+      emotionScores: emotionScores ?? {},
       drowsiness: drowsiness,
       attention: attention,
-      emotion: emotion,
+      finalState: finalState,
+      faceDetected: true,
       isCalibrating: isCalibrating,
     );
   }

@@ -11,8 +11,6 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
 
-  # Esta es la línea más importante.
-  # Debe estar alineada con 'flutter:' y 'cupertino_icons:'
   sentiment_analyzer:
     path: packages/sentiment_analyzer
 
@@ -23,3 +21,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - packages/sentiment_analyzer/assets/emotion_model.tflite

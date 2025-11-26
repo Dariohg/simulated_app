@@ -1,9 +1,10 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_mesh_detection/google_mlkit_face_mesh_detection.dart';
-import 'package:image/image.dart' as img; // Para procesar recorte
+import 'package:image/image.dart' as img;
 
 import '../../services/camera_service.dart';
 import '../../services/face_mesh_service.dart';
@@ -18,7 +19,7 @@ import '../../logic/state_aggregator.dart';
 class FaceMeshViewModel extends ChangeNotifier {
   final CameraService _cameraService;
   final FaceMeshService _faceMeshService;
-  final EmotionService _emotionService = EmotionService(); // Nuevo servicio
+  final EmotionService _emotionService = EmotionService();
 
   final DrowsinessAnalyzer _drowsinessAnalyzer = DrowsinessAnalyzer();
   final AttentionAnalyzer _attentionAnalyzer = AttentionAnalyzer();
@@ -27,6 +28,7 @@ class FaceMeshViewModel extends ChangeNotifier {
 
   bool _isInitialized = false;
   CombinedState? _lastState;
+  EmotionResult? _lastEmotionResult;
 
   bool get isInitialized => _isInitialized;
   CombinedState? get currentState => _lastState;
@@ -35,9 +37,17 @@ class FaceMeshViewModel extends ChangeNotifier {
   StreamSubscription<bool>? _cameraReadySubscription;
   bool _isProcessing = false;
 
-  // Control de frames para no saturar el modelo de emociones
   int _frameCount = 0;
-  final int _processEmotionEveryNFrames = 5; // Simular config Python
+  final int _processEmotionEveryNFrames = 3;
+
+  int _emotionSuccessCount = 0;
+  int _emotionFailCount = 0;
+
+  // Contadores de diagnóstico detallado
+  int _convertImageFail = 0;
+  int _processFaceFail = 0;
+  int _predictFail = 0;
+  int _modelNotLoaded = 0;
 
   FaceMeshViewModel({
     required CameraService cameraService,
@@ -48,24 +58,25 @@ class FaceMeshViewModel extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
-    print("[INFO] Inicializando componentes...");
+    print('[ViewModel] === INICIALIZANDO ===');
 
-    // Cargar modelo TFLite
     await _emotionService.loadModel();
+
+    print('[ViewModel] Modelo cargado: ${_emotionService.isModelLoaded}');
 
     _cameraReadySubscription = _cameraService.onCameraReady.listen((isReady) {
       if (isReady) {
         _isInitialized = true;
         _cameraService.startImageStream(_processFrame);
         notifyListeners();
-        print("[INFO] Sistema iniciado correctamente");
+        print('[ViewModel] Camara lista, stream iniciado');
       }
     });
 
     try {
       await _cameraService.initializeCamera();
     } catch (e) {
-      print("[ERROR] No se pudo acceder a la camara: $e");
+      print('[ViewModel] ERROR inicializando camara: $e');
     }
   }
 
@@ -74,106 +85,176 @@ class FaceMeshViewModel extends ChangeNotifier {
     _isProcessing = true;
     _frameCount++;
 
-    final inputImage = _convertCameraImageToInputImage(image);
-    if (inputImage == null) {
-      _isProcessing = false;
-      return;
-    }
+    try {
+      final inputImage = _convertCameraImageToInputImage(image);
+      if (inputImage == null) {
+        _isProcessing = false;
+        return;
+      }
 
-    // 1. Detectar Malla Facial (Rápido)
-    final meshes = await _faceMeshService.processImage(inputImage);
+      final meshes = await _faceMeshService.processImage(inputImage);
 
-    if (meshes.isNotEmpty) {
+      if (meshes.isEmpty) {
+        _lastState = _stateAggregator.aggregate(faceDetected: false);
+        notifyListeners();
+        _isProcessing = false;
+        return;
+      }
+
       final mesh = meshes.first;
-      List<FaceMeshPoint> points = List.generate(468, (index) =>
-          mesh.points.firstWhere((p) => p.index == index, orElse: () => FaceMeshPoint(index: index, x: 0, y: 0, z: 0))
+
+      final List<FaceMeshPoint> points = List.generate(
+        468,
+            (index) => mesh.points.firstWhere(
+              (p) => p.index == index,
+          orElse: () => FaceMeshPoint(index: index, x: 0, y: 0, z: 0),
+        ),
       );
 
-      // 2. Analizar Geometría (Somnolencia y Atención)
       final drowsiness = _drowsinessAnalyzer.analyze(points);
       final attention = _attentionAnalyzer.analyze(points);
+      final isCalibrating = !_attentionAnalyzer.isCalibrated;
 
-      // 3. Analizar Emociones (Más lento, solo cada N frames)
-      EmotionResult? emotionResult = _lastState?.emotion;
+      EmotionResult? emotionResult = _lastEmotionResult;
 
       if (_frameCount % _processEmotionEveryNFrames == 0) {
-        // Convertir YUV a RGB para el modelo
-        img.Image? convertedImage = ImageUtils.convertCameraImage(image);
+        emotionResult = await _processEmotion(image, mesh.boundingBox);
 
-        if (convertedImage != null) {
-          // Obtener Bounding Box de la cara desde la malla
-          final rect = mesh.boundingBox;
+        if (emotionResult != null) {
+          _lastEmotionResult = emotionResult;
+          _emotionSuccessCount++;
+        } else {
+          _emotionFailCount++;
+        }
 
-          // Pre-procesar (Recortar y Resize)
-          final modelInput = ImageUtils.processFaceForModel(
-              convertedImage,
-              rect.left.toInt(),
-              rect.top.toInt(),
-              rect.width.toInt(),
-              rect.height.toInt()
-          );
-
-          if (modelInput != null) {
-            // Inferencia TFLite
-            final probabilities = await _emotionService.predict(modelInput);
-            if (probabilities.isNotEmpty) {
-              emotionResult = _emotionAnalyzer.analyze(probabilities);
-            }
-          }
+        // Log detallado cada 30 frames
+        if (_frameCount % 30 == 0) {
+          print('[ViewModel] Emociones - OK: $_emotionSuccessCount, FAIL: $_emotionFailCount');
+          print('[ViewModel] Fallos detalle - convertImg: $_convertImageFail, processFace: $_processFaceFail, predict: $_predictFail, modelNotLoaded: $_modelNotLoaded');
         }
       }
 
-      // 4. Agregar Estado Final
+      String cognitiveState = 'concentrado';
+      String emotion = 'Neutral';
+      double confidence = 0.0;
+      Map<String, double>? emotionScores;
+
+      if (emotionResult != null) {
+        cognitiveState = emotionResult.cognitiveState;
+        emotion = emotionResult.emotion;
+        confidence = emotionResult.confidence;
+        emotionScores = emotionResult.scores;
+      }
+
       _lastState = _stateAggregator.aggregate(
+        faceDetected: true,
+        cognitiveState: cognitiveState,
+        emotion: emotion,
+        confidence: confidence,
+        emotionScores: emotionScores,
         drowsiness: drowsiness,
         attention: attention,
-        emotion: emotionResult,
-        isCalibrating: !_attentionAnalyzer.isCalibrated,
+        isCalibrating: isCalibrating,
       );
 
       notifyListeners();
+    } catch (e) {
+      print('[ViewModel] ERROR procesando frame: $e');
+    } finally {
+      _isProcessing = false;
     }
-
-    _isProcessing = false;
   }
 
-  // Método auxiliar interno para ML Kit (InputImage)
+  Future<EmotionResult?> _processEmotion(
+      CameraImage cameraImage,
+      Rect boundingBox,
+      ) async {
+    try {
+      // Check 1: Modelo cargado
+      if (!_emotionService.isModelLoaded) {
+        _modelNotLoaded++;
+        return null;
+      }
+
+      // Check 2: Convertir imagen
+      final img.Image? convertedImage = ImageUtils.convertCameraImage(cameraImage);
+      if (convertedImage == null) {
+        _convertImageFail++;
+        return null;
+      }
+
+      // Check 3: Procesar cara
+      final modelInput = ImageUtils.processFaceForModel(
+        convertedImage,
+        boundingBox.left.toInt(),
+        boundingBox.top.toInt(),
+        boundingBox.width.toInt(),
+        boundingBox.height.toInt(),
+      );
+      if (modelInput == null) {
+        _processFaceFail++;
+        return null;
+      }
+
+      // Check 4: Inferencia
+      final probabilities = await _emotionService.predict(modelInput);
+      if (probabilities.isEmpty) {
+        _predictFail++;
+        return null;
+      }
+
+      return _emotionAnalyzer.analyze(probabilities);
+    } catch (e) {
+      print('[ViewModel] ERROR en _processEmotion: $e');
+      return null;
+    }
+  }
+
   InputImage? _convertCameraImageToInputImage(CameraImage image) {
     final camera = _cameraService.cameraDescription;
     if (camera == null) return null;
 
-    final allBytes = WriteBuffer();
-    for (final Plane plane in image.planes) {
-      allBytes.putUint8List(plane.bytes);
+    try {
+      final allBytes = WriteBuffer();
+      for (final Plane plane in image.planes) {
+        allBytes.putUint8List(plane.bytes);
+      }
+      final bytes = allBytes.done().buffer.asUint8List();
+
+      final imageRotation =
+          InputImageRotationValue.fromRawValue(camera.sensorOrientation) ??
+              InputImageRotation.rotation0deg;
+
+      final inputImageFormat =
+          InputImageFormatValue.fromRawValue(image.format.raw) ??
+              InputImageFormat.nv21;
+
+      return InputImage.fromBytes(
+        bytes: bytes,
+        metadata: InputImageMetadata(
+          size: Size(image.width.toDouble(), image.height.toDouble()),
+          rotation: imageRotation,
+          format: inputImageFormat,
+          bytesPerRow: image.planes[0].bytesPerRow,
+        ),
+      );
+    } catch (e) {
+      print('[ViewModel] ERROR convirtiendo a InputImage: $e');
+      return null;
     }
-    final bytes = allBytes.done().buffer.asUint8List();
-
-    final imageRotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation)
-        ?? InputImageRotation.rotation0deg;
-
-    final inputImageFormat = InputImageFormatValue.fromRawValue(image.format.raw)
-        ?? InputImageFormat.nv21;
-
-    return InputImage.fromBytes(
-      bytes: bytes,
-      metadata: InputImageMetadata(
-        size: Size(image.width.toDouble(), image.height.toDouble()),
-        rotation: imageRotation,
-        format: inputImageFormat,
-        bytesPerRow: image.planes[0].bytesPerRow,
-      ),
-    );
   }
 
   void recalibrate() {
     _attentionAnalyzer.resetCalibration();
     _emotionAnalyzer.reset();
-    print("[INFO] Recalibrando... mire a la pantalla");
+    _drowsinessAnalyzer.reset();
+    _lastEmotionResult = null;
+    print('[ViewModel] Recalibracion iniciada');
   }
 
   @override
   void dispose() {
-    print("[INFO] Cerrando sistema...");
+    print('[ViewModel] Disposing...');
     _cameraReadySubscription?.cancel();
     _cameraService.dispose();
     _faceMeshService.dispose();

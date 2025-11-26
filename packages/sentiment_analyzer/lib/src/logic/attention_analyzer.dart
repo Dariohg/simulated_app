@@ -1,49 +1,76 @@
 import 'dart:collection';
+import 'dart:math';
 import 'package:google_mlkit_face_mesh_detection/google_mlkit_face_mesh_detection.dart';
 import '../utils/landmark_indices.dart';
 
 class AttentionResult {
   final double pitch;
   final double yaw;
+  final double roll;
   final bool isLookingAtScreen;
+  final int notLookingFrames;
 
   AttentionResult({
     required this.pitch,
     required this.yaw,
+    required this.roll,
     required this.isLookingAtScreen,
+    required this.notLookingFrames,
   });
 }
 
 class AttentionAnalyzer {
-  final double _pitchThreshold = 45.0;
-  final double _yawThreshold = 45.0;
-  final int _notLookingFramesThreshold = 25;
+  final double _pitchThreshold;
+  final double _yawThreshold;
+  final int _notLookingFramesThreshold;
+  final int _calibrationFramesRequired;
+  final double _calibrationStabilityThreshold;
 
   int _notLookingCounter = 0;
   double? _baselinePitch;
   double? _baselineYaw;
-  final ListQueue<List<double>> _calibrationFrames = ListQueue(30);
+  final ListQueue<List<double>> _calibrationFrames = ListQueue();
   bool _isCalibrated = false;
-  final ListQueue<List<double>> _poseHistory = ListQueue(5);
+  final ListQueue<List<double>> _poseHistory = ListQueue();
+
+  AttentionAnalyzer({
+    double pitchThreshold = 45.0,
+    double yawThreshold = 45.0,
+    int notLookingFramesThreshold = 25,
+    int calibrationFramesRequired = 30,
+    double calibrationStabilityThreshold = 15.0,
+  })  : _pitchThreshold = pitchThreshold,
+        _yawThreshold = yawThreshold,
+        _notLookingFramesThreshold = notLookingFramesThreshold,
+        _calibrationFramesRequired = calibrationFramesRequired,
+        _calibrationStabilityThreshold = calibrationStabilityThreshold;
 
   bool get isCalibrated => _isCalibrated;
 
   List<double> _calculateFaceDirection(List<FaceMeshPoint> points) {
     final nose = points[LandmarkIndices.noseTip];
-    final leftEye = points[LandmarkIndices.leftEyeOuter];
-    final rightEye = points[LandmarkIndices.rightEyeOuter];
+    final leftEyeOuter = points[LandmarkIndices.leftEyeOuter];
+    final rightEyeOuter = points[LandmarkIndices.rightEyeOuter];
     final chin = points[LandmarkIndices.chin];
 
-    final eyeCenterX = (leftEye.x + rightEye.x) / 2;
-    final eyeCenterY = (leftEye.y + rightEye.y) / 2;
+    final eyeCenterX = (leftEyeOuter.x + rightEyeOuter.x) / 2;
+    final eyeCenterY = (leftEyeOuter.y + rightEyeOuter.y) / 2;
 
-    final faceWidth = (rightEye.x - leftEye.x).abs();
+    final faceWidth = _distance2D(
+      rightEyeOuter.x, rightEyeOuter.y,
+      leftEyeOuter.x, leftEyeOuter.y,
+    );
+
     if (faceWidth < 1) return [0.0, 0.0];
 
     final horizontalOffset = (nose.x - eyeCenterX) / faceWidth;
     final yaw = horizontalOffset * 90;
 
-    final faceHeight = (chin.y - eyeCenterY).abs();
+    final faceHeight = _distance2D(
+      chin.x, chin.y,
+      eyeCenterX, eyeCenterY,
+    );
+
     if (faceHeight < 1) return [0.0, yaw];
 
     final verticalOffset = (nose.y - eyeCenterY) / faceHeight;
@@ -52,36 +79,75 @@ class AttentionAnalyzer {
     return [pitch, yaw];
   }
 
-  List<double> _smoothPose(double pitch, double yaw) {
-    _poseHistory.add([pitch, yaw]);
-    if (_poseHistory.length > 5) _poseHistory.removeFirst();
-
-    if (_poseHistory.length < 2) return [pitch, yaw];
-
-    double sumPitch = 0;
-    double sumYaw = 0;
-    for (var pose in _poseHistory) {
-      sumPitch += pose[0];
-      sumYaw += pose[1];
-    }
-    return [sumPitch / _poseHistory.length, sumYaw / _poseHistory.length];
+  double _distance2D(double x1, double y1, double x2, double y2) {
+    return sqrt(pow(x1 - x2, 2) + pow(y1 - y2, 2));
   }
 
-  void _calibrate(double pitch, double yaw) {
-    _calibrationFrames.add([pitch, yaw]);
-    if (_calibrationFrames.length > 30) _calibrationFrames.removeFirst();
+  /// Suavizado usando MEDIANA (igual que Python)
+  /// La mediana es más robusta a outliers que el promedio
+  List<double> _smoothPose(double pitch, double yaw) {
+    _poseHistory.addLast([pitch, yaw]);
+    if (_poseHistory.length > 5) {
+      _poseHistory.removeFirst();
+    }
 
-    if (_calibrationFrames.length >= 30 && !_isCalibrated) {
-      double sumPitch = 0;
-      double sumYaw = 0;
-      for (var frame in _calibrationFrames) {
-        sumPitch += frame[0];
-        sumYaw += frame[1];
+    if (_poseHistory.length < 2) {
+      return [pitch, yaw];
+    }
+
+    final pitches = _poseHistory.map((p) => p[0]).toList();
+    final yaws = _poseHistory.map((p) => p[1]).toList();
+
+    return [_median(pitches), _median(yaws)];
+  }
+
+  /// Calcula la mediana de una lista de valores
+  double _median(List<double> values) {
+    if (values.isEmpty) return 0.0;
+
+    final sorted = List<double>.from(values)..sort();
+    final mid = sorted.length ~/ 2;
+
+    if (sorted.length.isOdd) {
+      return sorted[mid];
+    } else {
+      return (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+  }
+
+  /// Calcula la desviación estándar
+  double _standardDeviation(List<double> values) {
+    if (values.length < 2) return double.infinity;
+
+    final mean = values.reduce((a, b) => a + b) / values.length;
+    final squaredDiffs = values.map((v) => pow(v - mean, 2));
+    final variance = squaredDiffs.reduce((a, b) => a + b) / values.length;
+
+    return sqrt(variance);
+  }
+
+  /// Calibración con VALIDACIÓN DE ESTABILIDAD (igual que Python)
+  /// Solo calibra cuando los valores son estables (baja desviación estándar)
+  void _calibrate(double pitch, double yaw) {
+    _calibrationFrames.addLast([pitch, yaw]);
+    if (_calibrationFrames.length > _calibrationFramesRequired) {
+      _calibrationFrames.removeFirst();
+    }
+
+    if (_calibrationFrames.length >= _calibrationFramesRequired && !_isCalibrated) {
+      final pitches = _calibrationFrames.map((f) => f[0]).toList();
+      final yaws = _calibrationFrames.map((f) => f[1]).toList();
+
+      final pitchStd = _standardDeviation(pitches);
+      final yawStd = _standardDeviation(yaws);
+
+      // Solo calibrar si los valores son ESTABLES
+      if (pitchStd < _calibrationStabilityThreshold &&
+          yawStd < _calibrationStabilityThreshold) {
+        _baselinePitch = _median(pitches);
+        _baselineYaw = _median(yaws);
+        _isCalibrated = true;
       }
-      _baselinePitch = sumPitch / 30;
-      _baselineYaw = sumYaw / 30;
-      _isCalibrated = true;
-      print("[INFO] Calibración completada");
     }
   }
 
@@ -93,7 +159,13 @@ class AttentionAnalyzer {
 
     if (!_isCalibrated) {
       _calibrate(pitch, yaw);
-      return AttentionResult(pitch: pitch, yaw: yaw, isLookingAtScreen: true);
+      return AttentionResult(
+        pitch: pitch,
+        yaw: yaw,
+        roll: 0.0,
+        isLookingAtScreen: true,
+        notLookingFrames: 0,
+      );
     }
 
     final relativePitch = pitch - (_baselinePitch ?? 0);
@@ -105,14 +177,23 @@ class AttentionAnalyzer {
     if (!isLooking) {
       _notLookingCounter++;
     } else {
-      _notLookingCounter = _notLookingCounter > 1 ? _notLookingCounter - 2 : 0;
+      // Decremento gradual (igual que Python: max(0, counter - 2))
+      _notLookingCounter = max(0, _notLookingCounter - 2);
     }
+
+    final sustainedNotLooking = _notLookingCounter >= _notLookingFramesThreshold;
 
     return AttentionResult(
       pitch: relativePitch,
       yaw: relativeYaw,
-      isLookingAtScreen: _notLookingCounter < _notLookingFramesThreshold,
+      roll: 0.0,
+      isLookingAtScreen: !sustainedNotLooking,
+      notLookingFrames: _notLookingCounter,
     );
+  }
+
+  void reset() {
+    _notLookingCounter = 0;
   }
 
   void resetCalibration() {
