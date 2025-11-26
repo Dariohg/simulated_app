@@ -6,8 +6,12 @@ plugins {
 
 android {
     namespace = "com.example.simulated_app"
-    compileSdk = 34
-    ndkVersion = "26.1.10909125"
+    // Volvemos a 34 o 35, que son estables. No uses 36 todavía.
+    compileSdk = 35
+
+    // Elimina la línea ndkVersion si no tienes la 27 instalada específicamente,
+    // o usa la versión por defecto estable de tu Android Studio.
+    // ndkVersion = "26.1.10909125"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -21,11 +25,10 @@ android {
     defaultConfig {
         applicationId = "com.example.simulated_app"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 35 // Coincide con compileSdk
         versionCode = 1
         versionName = "1.0.0"
 
-        // Solo arquitecturas ARM (reduce tamaño del APK)
         ndk {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a")
         }
@@ -37,13 +40,12 @@ android {
         }
     }
 
-    // Resolver conflictos de librerías nativas
+    // MANTÉN ESTO: Es vital para que no se eliminen las librerías de TFLite al compilar
     packaging {
         jniLibs {
             pickFirsts += setOf(
                 "lib/*/libtensorflowlite_jni.so",
-                "lib/*/libtensorflowlite_flex_jni.so",
-                "lib/*/libtensorflowlite_gpu_jni.so"
+                "lib/*/libtensorflowlite_flex_jni.so"
             )
         }
     }
@@ -54,9 +56,6 @@ flutter {
 }
 
 dependencies {
-    // TensorFlow Lite base
-    implementation("org.tensorflow:tensorflow-lite:2.14.0")
-
-    // TensorFlow Lite Flex Ops - REQUERIDO para el modelo HSEmotion
-    implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.14.0")
+    // MANTÉN ESTO: La librería de operaciones Flex
+    implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.16.1")
 }
