@@ -4,7 +4,6 @@ import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_mesh_detection/google_mlkit_face_mesh_detection.dart';
-import 'package:image/image.dart' as img;
 
 import '../../services/camera_service.dart';
 import '../../services/face_mesh_service.dart';
@@ -153,6 +152,7 @@ class FaceMeshViewModel extends ChangeNotifier {
 
       if (_frameCount % _processEmotionEveryNFrames == 0) {
         _emotionProcessedFrames++;
+        // CORRECCIÓN: Llamada asíncrona optimizada
         emotionResult = await _processEmotion(image, mesh.boundingBox);
 
         if (emotionResult != null) {
@@ -212,7 +212,7 @@ class FaceMeshViewModel extends ChangeNotifier {
     );
   }
 
-  /// Procesa las emociones de un frame
+  /// Procesa las emociones de un frame usando Isolates
   Future<EmotionResult?> _processEmotion(
       CameraImage cameraImage,
       Rect boundingBox,
@@ -229,20 +229,21 @@ class FaceMeshViewModel extends ChangeNotifier {
         return null;  // Cara demasiado pequeña
       }
 
-      // Paso 1: Convertir imagen de cámara a img.Image
-      final img.Image? convertedImage = ImageUtils.convertCameraImage(cameraImage);
-      if (convertedImage == null) {
-        _convertImageFail++;
-        return null;
-      }
+      // Obtener rotación del sensor para enderezar la imagen
+      // Usualmente 270 para frontal en Android, 90 en otros
+      final sensorOrientation = _cameraService.cameraDescription?.sensorOrientation ?? 270;
 
-      // Paso 2: Recortar y preprocesar cara para el modelo
-      final modelInput = ImageUtils.processFaceForModel(
-        convertedImage,
-        boundingBox.left.toInt(),
-        boundingBox.top.toInt(),
-        boundingBox.width.toInt(),
-        boundingBox.height.toInt(),
+      // CORRECCIÓN PRINCIPAL:
+      // Usar el Isolate para convertir, rotar y recortar sin bloquear la UI
+      final modelInput = await ImageUtils.processCameraImageInIsolate(
+        cameraImage,
+        sensorOrientation,
+        [
+          boundingBox.left.toInt(),
+          boundingBox.top.toInt(),
+          boundingBox.width.toInt(),
+          boundingBox.height.toInt(),
+        ],
       );
 
       if (modelInput == null) {
