@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+// 1. Importa el storage para poder consultar los datos
+import 'package:sentiment_analyzer/src/calibration/calibration_storage.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -9,6 +11,27 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _isCalibrated = false;
+  bool _isLoadingToCheck = true; // Para evitar el "parpadeo" del banner al iniciar
+
+  @override
+  void initState() {
+    super.initState();
+    // 2. Verificamos la calibración al iniciar la pantalla
+    _checkCalibrationStatus();
+  }
+
+  Future<void> _checkCalibrationStatus() async {
+    final storage = CalibrationStorage();
+    final result = await storage.load();
+
+    if (mounted) {
+      setState(() {
+        // Si el resultado no es nulo y fue exitoso, ya está calibrado
+        _isCalibrated = result != null && result.isSuccessful;
+        _isLoadingToCheck = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +45,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: ListView(
+      body: _isLoadingToCheck
+          ? const Center(child: CircularProgressIndicator()) // Espera mientras verifica
+          : ListView(
         children: [
           Padding(
             padding: const EdgeInsets.all(16.0),
@@ -31,7 +56,9 @@ class _HomeScreenState extends State<HomeScreen> {
               style: Theme.of(context).textTheme.headlineSmall,
             ),
           ),
+          // Solo muestra el banner si NO está calibrado
           if (!_isCalibrated) _buildCalibrationBanner(context),
+
           Card(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: ListTile(
@@ -158,12 +185,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _navigateToCalibration(BuildContext context) async {
+    // Esperamos el resultado de la pantalla de calibración
     final result = await Navigator.pushNamed(context, '/calibration');
-    if (result == true) {
-      setState(() {
-        _isCalibrated = true;
-      });
-    }
+
+    // Si volvemos, verificamos de nuevo el estado (por si se completó)
+    _checkCalibrationStatus();
   }
 
   void _showSettingsMenu(BuildContext context) {
