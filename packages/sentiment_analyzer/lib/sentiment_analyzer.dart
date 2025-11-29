@@ -3,6 +3,9 @@
 // Widget principal
 export 'src/sentiment_analysis_manager.dart';
 
+// Calibracion
+export 'src/calibration/calibration.dart';
+
 // Estados y resultados
 export 'src/logic/state_aggregator.dart' show CombinedState;
 export 'src/logic/emotion_analyzer.dart' show EmotionResult;

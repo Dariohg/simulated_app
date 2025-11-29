@@ -1,5 +1,5 @@
 name: simulated_app
-description: Una app que simula la integración del paquete sentiment_analyzer.
+description: Una app que simula la integracion del paquete sentiment_analyzer.
 publish_to: 'none'
 version: 1.0.0+1
 

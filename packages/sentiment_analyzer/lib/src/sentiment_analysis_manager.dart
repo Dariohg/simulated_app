@@ -6,18 +6,9 @@ import 'services/camera_service.dart';
 import 'services/face_mesh_service.dart';
 import 'logic/state_aggregator.dart';
 
-/// Widget principal que gestiona el análisis de sentimientos.
-///
-/// Se integra como overlay sobre el contenido de la app.
-/// Muestra una pequeña vista de cámara y el estado detectado.
 class SentimentAnalysisManager extends StatelessWidget {
-  /// ID del usuario actual
   final String userId;
-
-  /// ID de la lección actual
   final String lessonId;
-
-  /// Callback opcional cuando cambia el estado
   final void Function(CombinedState state)? onStateChanged;
 
   const SentimentAnalysisManager({
@@ -48,14 +39,12 @@ class _AnalysisOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final viewModel = context.watch<FaceMeshViewModel>();
 
-    // Notificar cambios de estado si hay callback
     if (onStateChanged != null && viewModel.currentState != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         onStateChanged!(viewModel.currentState!);
       });
     }
 
-    // Si la cámara no está lista, mostrar indicador de carga
     if (!viewModel.isInitialized || viewModel.cameraController == null) {
       return Positioned(
         right: 16,
@@ -89,7 +78,6 @@ class _AnalysisOverlay extends StatelessWidget {
 
     return Stack(
       children: [
-        // === CAPA 1: Vista de cámara (miniatura) ===
         Positioned(
           right: 16,
           bottom: 16,
@@ -112,16 +100,12 @@ class _AnalysisOverlay extends StatelessWidget {
             ),
           ),
         ),
-
-        // === CAPA 2: Panel de información ===
         if (viewModel.currentState != null)
           Positioned(
             right: 16,
             bottom: 160,
             child: _buildInfoPanel(context, viewModel),
           ),
-
-        // === CAPA 3: Botón de recalibración ===
         Positioned(
           right: 120,
           bottom: 16,
@@ -149,7 +133,6 @@ class _AnalysisOverlay extends StatelessWidget {
     );
   }
 
-  /// Construye el panel de información con estado y métricas
   Widget _buildInfoPanel(BuildContext context, FaceMeshViewModel viewModel) {
     final state = viewModel.currentState!;
 
@@ -168,7 +151,6 @@ class _AnalysisOverlay extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Estado principal
           Row(
             children: [
               Container(
@@ -192,24 +174,15 @@ class _AnalysisOverlay extends StatelessWidget {
               ),
             ],
           ),
-
           const SizedBox(height: 6),
-
-          // Emoción detectada
           if (state.faceDetected) ...[
-            _buildMetricRow(
-              'Emoción',
-              state.emotion,
-              Colors.white70,
-            ),
+            _buildMetricRow('Emocion', state.emotion, Colors.white70),
             _buildMetricRow(
               'Confianza',
               '${(state.confidence * 100).toStringAsFixed(0)}%',
               _getConfidenceColor(state.confidence),
             ),
           ],
-
-          // Métricas técnicas
           if (state.drowsiness != null) ...[
             const Divider(color: Colors.white24, height: 12),
             _buildMetricRow(
@@ -218,14 +191,8 @@ class _AnalysisOverlay extends StatelessWidget {
               state.drowsiness!.ear < 0.22 ? Colors.orange : Colors.green,
             ),
             if (state.drowsiness!.isYawning)
-              _buildMetricRow(
-                'Estado',
-                'BOSTEZANDO',
-                Colors.orange,
-              ),
+              _buildMetricRow('Estado', 'BOSTEZANDO', Colors.orange),
           ],
-
-          // Indicador de calibración
           if (state.isCalibrating) ...[
             const SizedBox(height: 6),
             Container(
@@ -248,10 +215,7 @@ class _AnalysisOverlay extends StatelessWidget {
                   SizedBox(width: 4),
                   Text(
                     'Calibrando...',
-                    style: TextStyle(
-                      color: Colors.yellow,
-                      fontSize: 10,
-                    ),
+                    style: TextStyle(color: Colors.yellow, fontSize: 10),
                   ),
                 ],
               ),
@@ -262,40 +226,24 @@ class _AnalysisOverlay extends StatelessWidget {
     );
   }
 
-  /// Fila de métrica con label y valor
   Widget _buildMetricRow(String label, String value, Color valueColor) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white54,
-              fontSize: 11,
-            ),
-          ),
-          Text(
-            value,
-            style: TextStyle(
-              color: valueColor,
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
+          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+          Text(value, style: TextStyle(color: valueColor, fontSize: 11, fontWeight: FontWeight.w500)),
         ],
       ),
     );
   }
 
-  /// Color del borde de la cámara según estado
   Color _getBorderColor(CombinedState? state) {
     if (state == null) return Colors.grey;
     return _getStateColor(state.finalState);
   }
 
-  /// Color asociado a cada estado
   Color _getStateColor(String state) {
     switch (state) {
       case 'concentrado':
@@ -305,7 +253,7 @@ class _AnalysisOverlay extends StatelessWidget {
       case 'distraido':
         return Colors.orange;
       case 'durmiendo':
-        return Colors.purple;
+        return const Color(0xFF607D8B);
       case 'no_mirando':
         return Colors.grey;
       case 'frustrado':
@@ -317,19 +265,17 @@ class _AnalysisOverlay extends StatelessWidget {
     }
   }
 
-  /// Color de confianza (verde alto, amarillo medio, rojo bajo)
   Color _getConfidenceColor(double confidence) {
     if (confidence >= 0.7) return Colors.green;
     if (confidence >= 0.4) return Colors.yellow;
     return Colors.orange;
   }
 
-  /// Label legible para cada estado
   String _getStateLabel(String state) {
     const labels = {
       'concentrado': 'CONCENTRADO',
       'entendiendo': 'ENTENDIENDO',
-      'distraido': 'DISTRAÍDO',
+      'distraido': 'DISTRAIDO',
       'durmiendo': 'SOMNOLIENTO',
       'no_mirando': 'NO MIRA',
       'frustrado': 'FRUSTRADO',
