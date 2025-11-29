@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
-// CORRECCIÓN: Importar el archivo barril para reconocer la interfaz
 import 'package:sentiment_analyzer/sentiment_analyzer.dart';
 
 class HttpNetworkService implements SentimentNetworkInterface {
@@ -14,7 +13,23 @@ class HttpNetworkService implements SentimentNetworkInterface {
     required this.apiKey,
   });
 
+  // --- Implementación de la Interfaz SentimentNetworkInterface ---
+
   @override
+  Future<void> sendSessionData(Map<String, dynamic> data) async {
+    try {
+      // Usamos el método post interno para enviar los datos a un endpoint específico.
+      // Ajusta '/session/data' al endpoint real de tu backend si es diferente.
+      await post('/session/data', data);
+    } catch (e) {
+      // Manejo de errores silencioso o re-lanzamiento según tu necesidad
+      print('Error enviando datos de sesión: $e');
+      rethrow;
+    }
+  }
+
+  // --- Métodos Auxiliares HTTP (Sin @override) ---
+
   Future<Map<String, dynamic>> post(String endpoint, Map<String, dynamic> body) async {
     try {
       final uri = Uri.parse('$baseUrl$endpoint');
@@ -32,7 +47,6 @@ class HttpNetworkService implements SentimentNetworkInterface {
     }
   }
 
-  @override
   Future<Map<String, dynamic>> delete(String endpoint) async {
     try {
       final uri = Uri.parse('$baseUrl$endpoint');
@@ -49,7 +63,6 @@ class HttpNetworkService implements SentimentNetworkInterface {
     }
   }
 
-  @override
   Future<Map<String, dynamic>> get(String endpoint) async {
     try {
       final uri = Uri.parse('$baseUrl$endpoint');

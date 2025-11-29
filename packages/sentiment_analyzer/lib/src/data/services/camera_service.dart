@@ -9,16 +9,13 @@ class CameraService {
   CameraDescription? _cameraDescription;
   CameraDescription? get cameraDescription => _cameraDescription;
 
-  final StreamController<bool> _cameraReadyController =
-  StreamController.broadcast();
+  final StreamController<bool> _cameraReadyController = StreamController.broadcast();
   Stream<bool> get onCameraReady => _cameraReadyController.stream;
 
   Future<void> initializeCamera() async {
     try {
       final cameras = await availableCameras();
-
       if (cameras.isEmpty) {
-        debugPrint('[CameraService] ERROR: No se encontraron camaras');
         _cameraReadyController.add(false);
         return;
       }
@@ -27,10 +24,6 @@ class CameraService {
             (camera) => camera.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
       );
-
-      debugPrint('[CameraService] Camara seleccionada: ${_cameraDescription!.name}');
-      debugPrint('[CameraService] Direccion: ${_cameraDescription!.lensDirection}');
-      debugPrint('[CameraService] Orientacion sensor: ${_cameraDescription!.sensorOrientation}');
 
       _controller = CameraController(
         _cameraDescription!,
@@ -42,42 +35,26 @@ class CameraService {
       );
 
       await _controller!.initialize();
-
-      debugPrint('[CameraService] Camara inicializada');
-      debugPrint('[CameraService] Resolucion: ${_controller!.value.previewSize}');
-
       _cameraReadyController.add(true);
     } catch (e) {
-      debugPrint('[CameraService] ERROR inicializando camara: $e');
       _cameraReadyController.add(false);
       rethrow;
     }
   }
 
   void startImageStream(Function(CameraImage) onImage) {
-    if (_controller?.value.isInitialized != true) {
-      debugPrint('[CameraService] ERROR: Controlador no inicializado');
-      return;
-    }
-
-    if (_controller?.value.isStreamingImages == true) {
-      debugPrint('[CameraService] Stream ya esta activo');
-      return;
-    }
-
+    if (_controller?.value.isInitialized != true) return;
+    if (_controller?.value.isStreamingImages == true) return;
     _controller?.startImageStream(onImage);
-    debugPrint('[CameraService] Stream de imagenes iniciado');
   }
 
   void stopImageStream() {
     if (_controller?.value.isStreamingImages == true) {
       _controller?.stopImageStream();
-      debugPrint('[CameraService] Stream de imagenes detenido');
     }
   }
 
   void dispose() {
-    debugPrint('[CameraService] Liberando recursos...');
     stopImageStream();
     _controller?.dispose();
     _cameraReadyController.close();

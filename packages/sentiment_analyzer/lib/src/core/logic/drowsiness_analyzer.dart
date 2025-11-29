@@ -18,12 +18,6 @@ class DrowsinessResult {
     required this.drowsyFrames,
     required this.yawnFrames,
   });
-
-  @override
-  String toString() {
-    return 'Drowsiness(EAR: ${ear.toStringAsFixed(3)}, MAR: ${mar.toStringAsFixed(3)}, '
-        'drowsy: $isDrowsy, yawning: $isYawning)';
-  }
 }
 
 class DrowsinessAnalyzer {
@@ -34,10 +28,6 @@ class DrowsinessAnalyzer {
 
   int _drowsyCounter = 0;
   int _yawnCounter = 0;
-
-  // Límite máximo de frames acumulados para evitar que el estado se quede "pegado"
-  // Si el umbral es 20, permitimos acumular hasta 30. Así, si el usuario despierta,
-  // solo tarda unos pocos frames en bajar de 30 a <20, en lugar de bajar desde 1000.
   late final int _maxDrowsyBuffer;
   late final int _maxYawnBuffer;
 
@@ -66,7 +56,6 @@ class DrowsinessAnalyzer {
 
   double _calculateEAR(List<FaceMeshPoint> allPoints, List<int> eyeIndices) {
     if (eyeIndices.length < 6) return 0.0;
-
     final p1 = allPoints[eyeIndices[0]];
     final p2 = allPoints[eyeIndices[1]];
     final p3 = allPoints[eyeIndices[2]];
@@ -79,13 +68,11 @@ class DrowsinessAnalyzer {
     final horizontal = _distance(p1, p4);
 
     if (horizontal == 0) return 0.0;
-
     return (vertical1 + vertical2) / (2.0 * horizontal);
   }
 
   double _calculateMAR(List<FaceMeshPoint> allPoints, List<int> mouthIndices) {
     if (mouthIndices.length < 4) return 0.0;
-
     final pLeft = allPoints[mouthIndices[0]];
     final pRight = allPoints[mouthIndices[1]];
     final pTop = allPoints[mouthIndices[2]];
@@ -95,7 +82,6 @@ class DrowsinessAnalyzer {
     final horizontal = _distance(pLeft, pRight);
 
     if (horizontal == 0) return 0.0;
-
     return vertical / horizontal;
   }
 
@@ -103,14 +89,11 @@ class DrowsinessAnalyzer {
     final leftEar = _calculateEAR(points, LandmarkIndices.leftEye);
     final rightEar = _calculateEAR(points, LandmarkIndices.rightEye);
     final ear = (leftEar + rightEar) / 2.0;
-
     final mar = _calculateMAR(points, LandmarkIndices.mouth);
 
-    // CORRECCIÓN: Usamos min() para topar el contador.
     if (ear < _earThreshold) {
       _drowsyCounter = min(_drowsyCounter + 1, _maxDrowsyBuffer);
     } else {
-      // Recuperación rápida: Restamos de 1 en 1, pero al estar topado el maximo, baja rapido.
       _drowsyCounter = max(0, _drowsyCounter - 1);
     }
 
@@ -142,10 +125,6 @@ class DrowsinessAnalyzer {
     return {
       'drowsyCounter': _drowsyCounter,
       'yawnCounter': _yawnCounter,
-      'drowsyThreshold': _drowsyFramesThreshold,
-      'yawnThreshold': _yawnFramesThreshold,
-      'earThreshold': _earThreshold,
-      'marThreshold': _marThreshold,
     };
   }
 }

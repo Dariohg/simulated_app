@@ -1,15 +1,18 @@
 library sentiment_analyzer;
 
-// Lógica Principal
+// Exportar UI Principal
 export 'src/sentiment_analysis_manager.dart';
 
-// Modelos
-export 'src/logic/state_aggregator.dart' show CombinedState;
-export 'src/calibration/calibration_service.dart' show CalibrationResult;
+// Exportar UI de Calibración
+export 'src/presentation/calibration/widgets/calibration_screen.dart';
 
-// Almacenamiento y Calibración
-export 'src/calibration/calibration_storage.dart';
-export 'src/calibration/calibration.dart';
+// Exportar Modelos y Estados Lógicos
+export 'src/core/logic/state_aggregator.dart' show CombinedState;
+export 'src/core/logic/session_manager.dart' show SessionManager;
 
-// Interfaces de Servicio
-export 'src/services/network_interface.dart';
+// IMPORTANTE: Exportar el modelo de calibración desde su nueva ubicación
+export 'src/data/models/calibration_result.dart';
+
+// Exportar Interfaces y Storage
+export 'src/data/interfaces/network_interface.dart';
+export 'src/data/services/calibration_storage.dart';

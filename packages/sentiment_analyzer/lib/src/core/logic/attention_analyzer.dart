@@ -17,12 +17,6 @@ class AttentionResult {
     required this.isLookingAtScreen,
     required this.notLookingFrames,
   });
-
-  @override
-  String toString() {
-    return 'Attention(pitch: ${pitch.toStringAsFixed(1)}, yaw: ${yaw.toStringAsFixed(1)}, '
-        'looking: $isLookingAtScreen)';
-  }
 }
 
 class AttentionAnalyzer {
@@ -115,10 +109,8 @@ class AttentionAnalyzer {
 
   double _median(List<double> values) {
     if (values.isEmpty) return 0.0;
-
     final sorted = List<double>.from(values)..sort();
     final mid = sorted.length ~/ 2;
-
     if (sorted.length.isOdd) {
       return sorted[mid];
     } else {
@@ -128,17 +120,14 @@ class AttentionAnalyzer {
 
   double _standardDeviation(List<double> values) {
     if (values.length < 2) return double.infinity;
-
     final mean = values.reduce((a, b) => a + b) / values.length;
     final squaredDiffs = values.map((v) => pow(v - mean, 2));
     final variance = squaredDiffs.reduce((a, b) => a + b) / values.length;
-
     return sqrt(variance);
   }
 
   void _calibrate(double pitch, double yaw) {
     _calibrationFrames.addLast([pitch, yaw]);
-
     while (_calibrationFrames.length > _calibrationFramesRequired) {
       _calibrationFrames.removeFirst();
     }
@@ -161,14 +150,12 @@ class AttentionAnalyzer {
 
   AttentionResult analyze(List<FaceMeshPoint> points) {
     final rawDirection = _calculateFaceDirection(points);
-
     final smoothed = _smoothPose(rawDirection[0], rawDirection[1]);
     final pitch = smoothed[0];
     final yaw = smoothed[1];
 
     if (!_isCalibrated) {
       _calibrate(pitch, yaw);
-
       return AttentionResult(
         pitch: pitch,
         yaw: yaw,
@@ -220,7 +207,6 @@ class AttentionAnalyzer {
       'baselinePitch': _baselinePitch,
       'baselineYaw': _baselineYaw,
       'notLookingCounter': _notLookingCounter,
-      'calibrationProgress': '${_calibrationFrames.length}/$_calibrationFramesRequired',
     };
   }
 }

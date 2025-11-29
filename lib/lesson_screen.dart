@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-// Nuevos imports para funcionalidades nativas
 import 'package:url_launcher/url_launcher.dart';
 import 'package:vibration/vibration.dart';
 
+// Import CORREGIDO: Usamos el archivo barril
 import 'package:sentiment_analyzer/sentiment_analyzer.dart';
 import 'services/http_network_service.dart';
 
@@ -42,7 +42,7 @@ class _LessonScreenState extends State<LessonScreen> {
     final apiKey = dotenv.env['API_KEY_EMOTIONAI'] ?? '';
 
     _networkService = HttpNetworkService(
-      baseUrl: 'http://192.168.1.71:8000', // Ajusta a tu IP local y Puerto de la API Python
+      baseUrl: 'http://192.168.1.71:8000', // Tu IP local
       apiKey: apiKey,
     );
 
@@ -69,12 +69,18 @@ class _LessonScreenState extends State<LessonScreen> {
   }
 
   Future<void> _loadCalibration() async {
+    // Usamos CalibrationStorage del paquete para cargar los datos
     final storage = CalibrationStorage();
     final calibration = await storage.load();
-    if (mounted) setState(() { _savedCalibration = calibration; _isLoading = false; });
+
+    if (mounted) {
+      setState(() {
+        _savedCalibration = calibration;
+        _isLoading = false;
+      });
+    }
   }
 
-  // --- IMPLEMENTACIÓN DE VIDEO ---
   Future<void> _handleVideoRequest(String url) async {
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
@@ -84,7 +90,6 @@ class _LessonScreenState extends State<LessonScreen> {
     }
   }
 
-  // --- IMPLEMENTACIÓN DE VIBRACIÓN ---
   void _handleVibrationRequest() async {
     if (await Vibration.hasVibrator() ?? false) {
       Vibration.vibrate(duration: 500);
@@ -117,7 +122,6 @@ class _LessonScreenState extends State<LessonScreen> {
               amqpPort: _amqpPort,
               amqpQueue: _amqpQueue,
 
-              // Pasamos las funciones que ejecutan la acción real
               onVideoRequested: _handleVideoRequest,
               onVibrateRequested: _handleVibrationRequest,
             ),

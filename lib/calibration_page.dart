@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+// Importamos todo desde el archivo barril del paquete
 import 'package:sentiment_analyzer/sentiment_analyzer.dart';
 
 class CalibrationPage extends StatelessWidget {
@@ -11,7 +12,7 @@ class CalibrationPage extends StatelessWidget {
         _showCompletionDialog(context);
       },
       onSkip: () {
-        Navigator.of(context).pop();
+        Navigator.of(context).pop(false); // Retorna false si se salta
       },
     );
   }
@@ -34,20 +35,20 @@ class CalibrationPage extends StatelessWidget {
             ),
             SizedBox(width: 12),
             Text(
-              'Calibracion Exitosa',
+              'Calibración Exitosa',
               style: TextStyle(color: Colors.white),
             ),
           ],
         ),
         content: const Text(
-          'El sistema ha sido calibrado segun tus caracteristicas faciales. La deteccion sera mas precisa.',
+          'El sistema ha sido calibrado según tus características faciales. La detección será más precisa.',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.of(ctx).pop();
-              Navigator.of(context).pop(true);
+              Navigator.of(ctx).pop(); // Cierra el diálogo
+              Navigator.of(context).pop(true); // Cierra la pantalla devolviendo 'true'
             },
             child: const Text(
               'Continuar',

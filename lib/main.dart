@@ -9,9 +9,6 @@ import 'package:simulated_app/lesson_screen.dart';
 import 'package:simulated_app/calibration_page.dart';
 import 'package:simulated_app/services/http_network_service.dart';
 
-// SessionManager debe importarse del package para instanciarlo globalmente
-import 'package:sentiment_analyzer/src/logic/session_manager.dart';
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-// 1. Importa el storage para poder consultar los datos
-import 'package:sentiment_analyzer/src/calibration/calibration_storage.dart';
+// Import CORREGIDO: Usamos el archivo barril, no la ruta interna src/...
+import 'package:sentiment_analyzer/sentiment_analyzer.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -11,22 +11,21 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _isCalibrated = false;
-  bool _isLoadingToCheck = true; // Para evitar el "parpadeo" del banner al iniciar
+  bool _isLoadingToCheck = true;
 
   @override
   void initState() {
     super.initState();
-    // 2. Verificamos la calibración al iniciar la pantalla
     _checkCalibrationStatus();
   }
 
   Future<void> _checkCalibrationStatus() async {
+    // CalibrationStorage está disponible gracias al export en sentiment_analyzer.dart
     final storage = CalibrationStorage();
     final result = await storage.load();
 
     if (mounted) {
       setState(() {
-        // Si el resultado no es nulo y fue exitoso, ya está calibrado
         _isCalibrated = result != null && result.isSuccessful;
         _isLoadingToCheck = false;
       });
@@ -46,7 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: _isLoadingToCheck
-          ? const Center(child: CircularProgressIndicator()) // Espera mientras verifica
+          ? const Center(child: CircularProgressIndicator())
           : ListView(
         children: [
           Padding(
@@ -56,15 +55,13 @@ class _HomeScreenState extends State<HomeScreen> {
               style: Theme.of(context).textTheme.headlineSmall,
             ),
           ),
-          // Solo muestra el banner si NO está calibrado
           if (!_isCalibrated) _buildCalibrationBanner(context),
-
           Card(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: ListTile(
               leading: const Icon(Icons.history_edu_rounded, color: Colors.blue),
-              title: const Text('Leccion 1: Historia de la IA'),
-              subtitle: const Text('Duracion: 20 min'),
+              title: const Text('Lección 1: Historia de la IA'),
+              subtitle: const Text('Duración: 20 min'),
               trailing: const Icon(Icons.arrow_forward_ios_rounded),
               onTap: () {
                 if (!_isCalibrated) {
@@ -76,11 +73,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            margin:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: ListTile(
               leading: const Icon(Icons.calculate_rounded, color: Colors.grey),
-              title: const Text('Leccion 2: Matematicas (Bloqueado)'),
-              subtitle: const Text('Duracion: 30 min'),
+              title: const Text('Lección 2: Matemáticas (Bloqueado)'),
+              subtitle: const Text('Duración: 30 min'),
               onTap: null,
             ),
           ),
@@ -122,7 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Calibracion requerida',
+                  'Calibración requerida',
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
@@ -131,7 +129,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Calibra el sistema para mejorar la precision',
+                  'Calibra el sistema para mejorar la precisión',
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.8),
                     fontSize: 13,
@@ -160,9 +158,9 @@ class _HomeScreenState extends State<HomeScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Calibracion necesaria'),
+        title: const Text('Calibración necesaria'),
         content: const Text(
-          'Para una mejor experiencia, te recomendamos calibrar el sistema antes de iniciar la leccion.',
+          'Para una mejor experiencia, te recomendamos calibrar el sistema antes de iniciar la lección.',
         ),
         actions: [
           TextButton(
@@ -185,11 +183,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _navigateToCalibration(BuildContext context) async {
-    // Esperamos el resultado de la pantalla de calibración
+    // Esperamos el resultado (true si se completó)
     final result = await Navigator.pushNamed(context, '/calibration');
 
-    // Si volvemos, verificamos de nuevo el estado (por si se completó)
-    _checkCalibrationStatus();
+    // Recargamos el estado para quitar el banner si fue exitoso
+    if (result == true) {
+      _checkCalibrationStatus();
+    }
   }
 
   void _showSettingsMenu(BuildContext context) {
