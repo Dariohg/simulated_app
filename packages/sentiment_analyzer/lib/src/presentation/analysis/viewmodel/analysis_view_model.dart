@@ -27,6 +27,7 @@ class AnalysisViewModel extends ChangeNotifier {
   bool _isInitialized = false;
   CombinedState? _lastState;
   bool _isProcessing = false;
+  bool _isPaused = false;
 
   EmotionResult? _lastEmotionResult;
 
@@ -45,6 +46,11 @@ class AnalysisViewModel extends ChangeNotifier {
   })  : _cameraService = cameraService,
         _faceMeshService = faceMeshService {
     initialize();
+  }
+
+  void setPaused(bool paused) {
+    _isPaused = paused;
+    notifyListeners();
   }
 
   void applyCalibration(CalibrationResult calibration) {
@@ -73,6 +79,7 @@ class AnalysisViewModel extends ChangeNotifier {
   }
 
   void _processFrame(CameraImage image) async {
+    if (_isPaused) return;
     if (_isProcessing) return;
     if (DateTime.now().difference(_lastProcessTime) < _processInterval) return;
 

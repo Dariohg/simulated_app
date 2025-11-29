@@ -1,8 +1,6 @@
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// RUTA CORREGIDA SEGÚN TU ESTRUCTURA:
 import 'presentation/analysis/viewmodel/analysis_view_model.dart';
 import 'presentation/analysis/widgets/analysis_overlay.dart';
 
@@ -54,19 +52,20 @@ class SentimentAnalysisManager extends StatefulWidget {
   State<SentimentAnalysisManager> createState() => _SentimentAnalysisManagerState();
 }
 
-class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
+class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> with WidgetsBindingObserver {
   late SessionManager _sessionManager;
   late FeedbackService _feedbackService;
+  late AnalysisViewModel _viewModel;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _sessionManager = SessionManager(
       network: widget.networkInterface,
       userId: int.tryParse(widget.userId) ?? 0,
     );
-    _sessionManager.startSession();
 
     _feedbackService = FeedbackService();
     _feedbackService.connect(
@@ -77,12 +76,54 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
       virtualHost: widget.amqpVirtualHost,
       port: widget.amqpPort,
     );
+
+    _viewModel = AnalysisViewModel(
+      cameraService: CameraService(),
+      faceMeshService: FaceMeshService(),
+    );
+
+    if (widget.calibration != null) {
+      _viewModel.applyCalibration(widget.calibration!);
+    }
+
+    _sessionManager.setDataProvider(() {
+      if (_viewModel.currentState != null) {
+        return _viewModel.currentState!.toJson(
+            int.tryParse(widget.userId) ?? 0,
+            widget.lessonId
+        );
+      }
+      return {};
+    });
+
+    _sessionManager.startSession();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _handlePause();
+    } else if (state == AppLifecycleState.resumed) {
+      _handleResume();
+    }
+  }
+
+  void _handlePause() {
+    _sessionManager.pauseSession();
+    _viewModel.setPaused(true);
+  }
+
+  void _handleResume() {
+    _sessionManager.resumeSession();
+    _viewModel.setPaused(false);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sessionManager.dispose();
     _feedbackService.dispose();
+    _viewModel.dispose();
     super.dispose();
   }
 
@@ -90,18 +131,8 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(
-          // USAMOS AnalysisViewModel (el nombre correcto para tu estructura)
-          create: (_) {
-            final vm = AnalysisViewModel(
-              cameraService: CameraService(),
-              faceMeshService: FaceMeshService(),
-            );
-            if (widget.calibration != null) {
-              vm.applyCalibration(widget.calibration!);
-            }
-            return vm;
-          },
+        ChangeNotifierProvider<AnalysisViewModel>.value(
+          value: _viewModel,
         ),
         Provider<SessionManager>.value(value: _sessionManager),
       ],

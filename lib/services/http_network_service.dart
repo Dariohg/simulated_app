@@ -13,22 +13,41 @@ class HttpNetworkService implements SentimentNetworkInterface {
     required this.apiKey,
   });
 
-  // --- Implementación de la Interfaz SentimentNetworkInterface ---
-
   @override
-  Future<void> sendSessionData(Map<String, dynamic> data) async {
+  Future<void> sendSessionStart(int userId) async {
     try {
-      // Usamos el método post interno para enviar los datos a un endpoint específico.
-      // Ajusta '/session/data' al endpoint real de tu backend si es diferente.
-      await post('/session/data', data);
+      await post('/session/start', {'userId': userId});
     } catch (e) {
-      // Manejo de errores silencioso o re-lanzamiento según tu necesidad
-      print('Error enviando datos de sesión: $e');
-      rethrow;
+      print('Error sending session start: $e');
     }
   }
 
-  // --- Métodos Auxiliares HTTP (Sin @override) ---
+  @override
+  Future<void> sendSessionEnd(int userId) async {
+    try {
+      await post('/session/end', {'userId': userId});
+    } catch (e) {
+      print('Error sending session end: $e');
+    }
+  }
+
+  @override
+  Future<void> sendHeartbeat(int userId) async {
+    try {
+      await post('/session/heartbeat', {'userId': userId});
+    } catch (e) {
+      print('Error sending heartbeat: $e');
+    }
+  }
+
+  @override
+  Future<void> sendAnalysisData(Map<String, dynamic> data) async {
+    try {
+      await post('/session/data', data);
+    } catch (e) {
+      print('Error sending analysis data: $e');
+    }
+  }
 
   Future<Map<String, dynamic>> post(String endpoint, Map<String, dynamic> body) async {
     try {

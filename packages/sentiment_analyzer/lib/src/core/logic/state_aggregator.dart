@@ -21,6 +21,43 @@ class CombinedState {
     required this.faceDetected,
     this.isCalibrating = false,
   });
+
+  Map<String, dynamic> toJson(int userId, String lessonId) {
+    final scoresList = emotionScores?.entries.map((e) => {
+      'emocion': e.key,
+      'confianza': e.value,
+    }).toList() ?? [];
+
+    return {
+      'metadata': {
+        'user_id': userId,
+        'lesson_id': lessonId,
+        'timestamp': DateTime.now().toIso8601String(),
+      },
+      'analisis_sentimiento': {
+        'emocion_principal': {
+          'nombre': emotion,
+          'confianza': confidence,
+          'estado_cognitivo': finalState,
+        },
+        'desglose_emociones': scoresList,
+      },
+      'datos_biometricos': {
+        'atencion': {
+          'mirando_pantalla': attention?.isLookingAtScreen ?? false,
+          'orientacion_cabeza': {
+            'pitch': attention?.pitch ?? 0.0,
+            'yaw': attention?.yaw ?? 0.0,
+          }
+        },
+        'somnolencia': {
+          'esta_durmiendo': drowsiness?.isDrowsy ?? false,
+          'apertura_ojos_ear': drowsiness?.ear ?? 0.0,
+        },
+        'rostro_detectado': faceDetected,
+      }
+    };
+  }
 }
 
 class StateAggregator {
