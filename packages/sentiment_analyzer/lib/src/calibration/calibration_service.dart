@@ -78,12 +78,23 @@ class CalibrationProgress {
 }
 
 class CalibrationService {
-  static const int _framesForFaceDetection = 30;
-  static const int _framesForLighting = 20;
-  static const int _framesForEyeOpen = 30;
-  static const int _framesForEyeClosed = 20;
-  static const double _minBrightness = 0.3;
-  static const double _maxBrightness = 0.9;
+  // --- CONFIGURACIÓN AJUSTADA ---
+  // Mantenemos un buffer grande para precisión (2 seg de historia)
+  static const int _framesBuffer = 60;
+
+  // Requerimos 45 frames "buenos" acumulados (aprox 1.5 segundos de estabilidad)
+  static const int _targetGoodFrames = 45;
+
+  // REDUCIDO: Umbral de estabilidad (0.0 a 1.0).
+  // 0.4 es suficiente para decir "hay una cara y se ve bien".
+  static const double _stabilityThreshold = 0.4;
+
+  static const int _framesForLighting = 25;
+  static const int _framesForEyeOpen = 40;
+  static const int _framesForEyeClosed = 25;
+
+  static const double _minBrightness = 0.2;
+  static const double _maxBrightness = 0.95;
 
   CalibrationStep _currentStep = CalibrationStep.faceDetection;
   CalibrationResult? _lastResult;
@@ -112,7 +123,7 @@ class CalibrationService {
     _isCalibrating = true;
     _currentStep = CalibrationStep.faceDetection;
     _clearBuffers();
-    _emitProgress('Coloca tu rostro frente a la camara', 0.0);
+    _emitProgress('Coloca tu rostro frente a la cámara', 0.0);
   }
 
   void resetCalibration() {
@@ -152,43 +163,59 @@ class CalibrationService {
   }
 
   CalibrationProgress _processFaceDetection(List<FaceMeshPoint>? points) {
-    if (points == null || points.length < 468) {
-      _faceDetectionScores.add(0.0);
-    } else {
-      final stability = _calculateFaceStability(points);
-      _faceDetectionScores.add(stability);
-      _collectPoseData(points);
+    double currentFrameStability = 0.0;
+    bool isFaceDetected = points != null && points.length >= 468;
+
+    if (isFaceDetected) {
+      currentFrameStability = _calculateFaceStability(points);
+
+      // Si el frame es medianamente bueno, guardamos datos de postura
+      if (currentFrameStability >= 0.3) {
+        _collectPoseData(points);
+      }
     }
 
-    if (_faceDetectionScores.length > _framesForFaceDetection) {
+    // Añadir al buffer
+    _faceDetectionScores.add(currentFrameStability);
+    if (_faceDetectionScores.length > _framesBuffer) {
       _faceDetectionScores.removeAt(0);
     }
 
-    final progress = _faceDetectionScores.length / _framesForFaceDetection;
-    final avgStability = _faceDetectionScores.isEmpty
-        ? 0.0
-        : _faceDetectionScores.reduce((a, b) => a + b) / _faceDetectionScores.length;
+    // Contar frames que superan el umbral de calidad
+    int goodFramesCount = _faceDetectionScores
+        .where((score) => score >= _stabilityThreshold)
+        .length;
 
-    if (_faceDetectionScores.length >= _framesForFaceDetection &&
-        avgStability > 0.7) {
+    // Calcular progreso (0.0 a 1.0)
+    double progress = goodFramesCount / _targetGoodFrames;
+
+    // CONDICIÓN DE ÉXITO
+    if (goodFramesCount >= _targetGoodFrames) {
       _currentStep = CalibrationStep.lighting;
       _brightnessValues.clear();
-      return _emitProgress('Rostro detectado. Verificando iluminacion...', 1.0);
+      return _emitProgress('Rostro detectado. Verificando luz...', 1.0);
     }
 
     String message;
-    if (points == null || points.length < 468) {
-      message = 'No se detecta rostro. Acercate a la camara.';
-    } else if (avgStability < 0.5) {
-      message = 'Manten el rostro quieto y centrado.';
+    if (!isFaceDetected) {
+      message = 'No se detecta rostro.';
+    } else if (currentFrameStability < _stabilityThreshold) {
+      // Si detecta cara pero no pasa el umbral, probablemente está muy lejos o moviéndose
+      // Debug tip: puedes imprimir currentFrameStability para ver qué valor da
+      message = 'Acércate un poco más y mantén la posición.';
     } else {
-      message = 'Detectando rostro... Manten la posicion.';
+      message = 'Analizando rostro... ${(progress * 100).toInt()}%';
     }
 
     return _emitProgress(message, progress);
   }
 
   CalibrationProgress _processLighting(List<FaceMeshPoint>? points, double? brightness) {
+    if (points == null || points.length < 468) {
+      // Pausa el progreso si se pierde la cara, no reinicia
+      return _emitProgress('Rostro perdido.', 0.0);
+    }
+
     if (brightness != null) {
       _brightnessValues.add(brightness);
     }
@@ -206,12 +233,12 @@ class CalibrationService {
     bool lightingOk = false;
 
     if (avgBrightness < _minBrightness) {
-      message = 'Iluminacion muy baja. Busca mejor luz.';
+      message = 'Poca luz detectada.';
     } else if (avgBrightness > _maxBrightness) {
-      message = 'Iluminacion muy alta. Evita luz directa.';
+      message = 'Demasiada luz (contraluz).';
     } else {
       lightingOk = true;
-      message = 'Iluminacion correcta.';
+      message = 'Iluminación correcta.';
     }
 
     if (_brightnessValues.length >= _framesForLighting && lightingOk) {
@@ -220,7 +247,7 @@ class CalibrationService {
       _waitingForEyeClose = false;
       _vibrationTriggered = false;
       return _emitProgress(
-        'Manten los ojos abiertos naturalmente.',
+        'Listo. Mantén los ojos abiertos.',
         1.0,
         requiresAction: true,
         actionMessage: 'Ojos abiertos',
@@ -232,17 +259,14 @@ class CalibrationService {
 
   CalibrationProgress _processEyeBaseline(List<FaceMeshPoint>? points) {
     if (points == null || points.length < 468) {
-      return _emitProgress(
-        'Rostro perdido. Vuelve a posicionarte.',
-        0.0,
-      );
+      return _emitProgress('Rostro perdido.', 0.0);
     }
 
     final ear = _calculateEAR(points);
 
     if (!_waitingForEyeClose) {
+      // FASE 1: OJOS ABIERTOS
       _eyeOpenEARValues.add(ear);
-
       if (_eyeOpenEARValues.length > _framesForEyeOpen) {
         _eyeOpenEARValues.removeAt(0);
       }
@@ -263,14 +287,14 @@ class CalibrationService {
       }
 
       return _emitProgress(
-        'Manten los ojos abiertos naturalmente.',
+        'Midiendo ojos abiertos...',
         progress * 0.5,
         requiresAction: true,
         actionMessage: 'Ojos abiertos',
       );
     } else {
+      // FASE 2: OJOS CERRADOS
       _eyeClosedEARValues.add(ear);
-
       if (_eyeClosedEARValues.length > _framesForEyeClosed) {
         _eyeClosedEARValues.removeAt(0);
       }
@@ -280,14 +304,14 @@ class CalibrationService {
       if (_eyeClosedEARValues.length >= _framesForEyeClosed) {
         _completeCalibration();
         return _emitProgress(
-          'Calibracion completada.',
+          'Calibración completada.',
           1.0,
           shouldVibrate: true,
         );
       }
 
       return _emitProgress(
-        'Manten los ojos cerrados...',
+        'Mantén los ojos cerrados...',
         progress,
         requiresAction: true,
         actionMessage: 'Ojos cerrados',
@@ -297,7 +321,7 @@ class CalibrationService {
 
   void _completeCalibration() {
     final avgOpenEAR = _eyeOpenEARValues.isEmpty
-        ? 0.25
+        ? 0.30
         : _eyeOpenEARValues.reduce((a, b) => a + b) / _eyeOpenEARValues.length;
 
     final avgClosedEAR = _eyeClosedEARValues.isEmpty
@@ -330,26 +354,26 @@ class CalibrationService {
     _currentStep = CalibrationStep.completed;
     _isCalibrating = false;
 
-    debugPrint('[CalibrationService] Calibracion completada:');
-    debugPrint('[CalibrationService]   EAR ojos abiertos: ${avgOpenEAR.toStringAsFixed(4)}');
-    debugPrint('[CalibrationService]   EAR ojos cerrados: ${avgClosedEAR.toStringAsFixed(4)}');
-    debugPrint('[CalibrationService]   Umbral EAR: ${earThreshold.toStringAsFixed(4)}');
-    debugPrint('[CalibrationService]   Pitch base: ${avgPitch.toStringAsFixed(2)}');
-    debugPrint('[CalibrationService]   Yaw base: ${avgYaw.toStringAsFixed(2)}');
+    debugPrint('[Calibration] Completada. Threshold: $earThreshold');
   }
 
+  // --- LÓGICA CLAVE CORREGIDA ---
   double _calculateFaceStability(List<FaceMeshPoint> points) {
     if (points.length < 468) return 0.0;
 
     final leftEye = points[LandmarkIndices.leftEyeOuter];
     final rightEye = points[LandmarkIndices.rightEyeOuter];
 
+    // Distancia en píxeles entre los extremos de los ojos
     final faceWidth = _distance2D(leftEye.x, leftEye.y, rightEye.x, rightEye.y);
 
-    if (faceWidth < 50) return 0.3;
-    if (faceWidth < 80) return 0.6;
-    if (faceWidth < 120) return 0.8;
-    return 1.0;
+    // NUEVOS UMBRALES (Mucho más tolerantes)
+    // Antes pedía >70px para score 0.8. Ahora pide >35px.
+    // Esto debería solucionar el problema de que "no avanza".
+    if (faceWidth < 10) return 0.0; // Ruido o muy lejos
+    if (faceWidth < 20) return 0.4; // Lejos
+    if (faceWidth < 35) return 0.6; // Distancia media
+    return 1.0; // Buena distancia (score máximo)
   }
 
   void _collectPoseData(List<FaceMeshPoint> points) {
@@ -357,7 +381,7 @@ class CalibrationService {
     _pitchValues.add(direction[0]);
     _yawValues.add(direction[1]);
 
-    while (_pitchValues.length > 60) {
+    while (_pitchValues.length > _framesBuffer) {
       _pitchValues.removeAt(0);
       _yawValues.removeAt(0);
     }
@@ -372,18 +396,13 @@ class CalibrationService {
     final eyeCenterX = (leftEyeOuter.x + rightEyeOuter.x) / 2;
     final eyeCenterY = (leftEyeOuter.y + rightEyeOuter.y) / 2;
 
-    final faceWidth = _distance2D(
-      rightEyeOuter.x, rightEyeOuter.y,
-      leftEyeOuter.x, leftEyeOuter.y,
-    );
-
+    final faceWidth = _distance2D(rightEyeOuter.x, rightEyeOuter.y, leftEyeOuter.x, leftEyeOuter.y);
     if (faceWidth < 1) return [0.0, 0.0];
 
     final horizontalOffset = (nose.x - eyeCenterX) / faceWidth;
     final yaw = horizontalOffset * 90;
 
     final faceHeight = _distance2D(chin.x, chin.y, eyeCenterX, eyeCenterY);
-
     if (faceHeight < 1) return [0.0, yaw];
 
     final verticalOffset = (nose.y - eyeCenterY) / faceHeight;
@@ -400,7 +419,6 @@ class CalibrationService {
 
   double _calculateSingleEyeEAR(List<FaceMeshPoint> points, List<int> eyeIndices) {
     if (eyeIndices.length < 6) return 0.0;
-
     final p1 = points[eyeIndices[0]];
     final p2 = points[eyeIndices[1]];
     final p3 = points[eyeIndices[2]];
@@ -413,7 +431,6 @@ class CalibrationService {
     final horizontal = _distance2D(p1.x, p1.y, p4.x, p4.y);
 
     if (horizontal == 0) return 0.0;
-
     return (vertical1 + vertical2) / (2.0 * horizontal);
   }
 

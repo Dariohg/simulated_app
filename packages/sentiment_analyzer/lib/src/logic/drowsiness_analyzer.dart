@@ -35,6 +35,12 @@ class DrowsinessAnalyzer {
   int _drowsyCounter = 0;
   int _yawnCounter = 0;
 
+  // Límite máximo de frames acumulados para evitar que el estado se quede "pegado"
+  // Si el umbral es 20, permitimos acumular hasta 30. Así, si el usuario despierta,
+  // solo tarda unos pocos frames en bajar de 30 a <20, en lugar de bajar desde 1000.
+  late final int _maxDrowsyBuffer;
+  late final int _maxYawnBuffer;
+
   DrowsinessAnalyzer({
     double earThreshold = 0.22,
     double marThreshold = 0.6,
@@ -43,7 +49,10 @@ class DrowsinessAnalyzer {
   })  : _earThreshold = earThreshold,
         _marThreshold = marThreshold,
         _drowsyFramesThreshold = drowsyFramesThreshold,
-        _yawnFramesThreshold = yawnFramesThreshold;
+        _yawnFramesThreshold = yawnFramesThreshold {
+    _maxDrowsyBuffer = drowsyFramesThreshold + 10;
+    _maxYawnBuffer = yawnFramesThreshold + 10;
+  }
 
   void updateEarThreshold(double threshold) {
     _earThreshold = threshold;
@@ -97,14 +106,16 @@ class DrowsinessAnalyzer {
 
     final mar = _calculateMAR(points, LandmarkIndices.mouth);
 
+    // CORRECCIÓN: Usamos min() para topar el contador.
     if (ear < _earThreshold) {
-      _drowsyCounter++;
+      _drowsyCounter = min(_drowsyCounter + 1, _maxDrowsyBuffer);
     } else {
+      // Recuperación rápida: Restamos de 1 en 1, pero al estar topado el maximo, baja rapido.
       _drowsyCounter = max(0, _drowsyCounter - 1);
     }
 
     if (mar > _marThreshold) {
-      _yawnCounter++;
+      _yawnCounter = min(_yawnCounter + 1, _maxYawnBuffer);
     } else {
       _yawnCounter = max(0, _yawnCounter - 1);
     }

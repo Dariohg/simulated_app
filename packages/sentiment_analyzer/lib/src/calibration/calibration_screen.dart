@@ -54,16 +54,64 @@ class _CalibrationContentState extends State<_CalibrationContent> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A1A),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(context),
-            Expanded(
-              child: _buildContent(context, viewModel),
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 1. Capa de Cámara (Fondo completo corregido)
+          if (viewModel.isInitialized && viewModel.cameraController != null)
+            _buildFullScreenCamera(context, viewModel.cameraController!)
+          else
+            Container(color: Colors.black),
+
+          // 2. Capa de UI (Gradiente y Contenidos)
+          SafeArea(
+            child: Column(
+              children: [
+                _buildHeader(context),
+                Expanded(
+                  child: _buildContent(context, viewModel),
+                ),
+              ],
             ),
-            _buildFooter(context, viewModel),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // CORRECCIÓN VISUAL: Full Screen Camera con AspectRatio correcto (BoxFit.cover)
+  Widget _buildFullScreenCamera(BuildContext context, CameraController controller) {
+    final size = MediaQuery.of(context).size;
+    final deviceRatio = size.width / size.height;
+
+    // Obtenemos el ratio de la cámara. Nota: en móviles value.aspectRatio suele ser width/height
+    // pero invertido si está en portrait. Para portrait suele ser < 1.0 (ej 9/16).
+    // CameraController maneja previewSize.
+    if (!controller.value.isInitialized) return Container();
+
+    // Calcular escala para simular BoxFit.cover
+    final previewSize = controller.value.previewSize!;
+    final previewHeight = previewSize.height;
+    final previewWidth = previewSize.width;
+
+    // En portrait, la camara nos da dimensiones "landscape", así que invertimos para el ratio
+    final sensorRatio = previewHeight / previewWidth;
+
+    double scale = 1.0;
+    // Si el dispositivo es más "alto" que la imagen de la cámara
+    if (deviceRatio < sensorRatio) {
+      scale = sensorRatio / deviceRatio;
+    } else {
+      scale = deviceRatio / sensorRatio;
+    }
+
+    return Center(
+      child: Transform.scale(
+        scale: scale,
+        child: AspectRatio(
+          aspectRatio: sensorRatio,
+          child: CameraPreview(controller),
         ),
       ),
     );
@@ -71,24 +119,25 @@ class _CalibrationContentState extends State<_CalibrationContent> {
 
   Widget _buildHeader(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Row(
         children: [
           if (widget.onSkip != null)
             IconButton(
               onPressed: widget.onSkip,
-              icon: const Icon(Icons.close, color: Colors.white54),
+              icon: const Icon(Icons.close, color: Colors.white),
             )
           else
             const SizedBox(width: 48),
           const Expanded(
             child: Text(
-              'Calibracion',
+              'Calibración',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 20,
                 fontWeight: FontWeight.w600,
+                shadows: [Shadow(color: Colors.black, blurRadius: 4)],
               ),
             ),
           ),
@@ -100,198 +149,97 @@ class _CalibrationContentState extends State<_CalibrationContent> {
 
   Widget _buildContent(BuildContext context, CalibrationViewModel viewModel) {
     if (!viewModel.isInitialized) {
-      return _buildLoadingState();
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFF4CAF50)),
+      );
     }
 
     if (!_calibrationStarted) {
       return _buildWelcomeState(context, viewModel);
     }
 
-    return _buildCalibrationState(context, viewModel);
-  }
-
-  Widget _buildLoadingState() {
-    return const Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4CAF50)),
-          ),
-          SizedBox(height: 16),
-          Text(
-            'Iniciando camara...',
-            style: TextStyle(color: Colors.white70),
-          ),
-        ],
-      ),
+    // Estado de calibración activa
+    return Stack(
+      children: [
+        // Guía Facial en el centro
+        Positioned.fill(
+          child: _buildFaceOverlay(viewModel),
+        ),
+        // Panel inferior
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: _buildBottomPanel(context, viewModel),
+        ),
+      ],
     );
   }
 
   Widget _buildWelcomeState(BuildContext context, CalibrationViewModel viewModel) {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: const Color(0xFF2D2D2D),
-              border: Border.all(
-                color: const Color(0xFF4CAF50),
-                width: 3,
-              ),
-            ),
-            child: const Icon(
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.black54, // Fondo semitransparente para leer sobre la cámara
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
               Icons.face_retouching_natural,
               size: 60,
               color: Color(0xFF4CAF50),
             ),
-          ),
-          const SizedBox(height: 32),
-          const Text(
-            'Calibracion Personalizada',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
+            const SizedBox(height: 24),
+            const Text(
+              'Calibración Personalizada',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Para mejorar la precision del sistema, necesitamos calibrar segun tus caracteristicas faciales.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 16,
-              height: 1.5,
+            const SizedBox(height: 16),
+            const Text(
+              'Asegúrate de estar en un lugar iluminado y sostén el dispositivo frente a tu rostro.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 16,
+                height: 1.5,
+              ),
             ),
-          ),
-          const SizedBox(height: 32),
-          _buildStepPreview(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStepPreview() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2D2D2D),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: [
-          _buildStepItem(
-            icon: Icons.face,
-            title: 'Deteccion de rostro',
-            description: 'Verificamos que tu rostro sea visible',
-          ),
-          const SizedBox(height: 16),
-          _buildStepItem(
-            icon: Icons.wb_sunny_outlined,
-            title: 'Iluminacion',
-            description: 'Comprobamos la luz ambiente',
-          ),
-          const SizedBox(height: 16),
-          _buildStepItem(
-            icon: Icons.visibility,
-            title: 'Calibracion de ojos',
-            description: 'Ajustamos segun el tamano de tus ojos',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStepItem({
-    required IconData icon,
-    required String title,
-    required String description,
-  }) {
-    return Row(
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: const Color(0xFF3D3D3D),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, color: Colors.white70, size: 24),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: viewModel.isInitialized
+                    ? () {
+                  setState(() {
+                    _calibrationStarted = true;
+                  });
+                  viewModel.startCalibration();
+                }
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4CAF50),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  'Iniciar',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
               ),
-              Text(
-                description,
-                style: const TextStyle(
-                  color: Colors.white54,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCalibrationState(BuildContext context, CalibrationViewModel viewModel) {
-    return Column(
-      children: [
-        Expanded(
-          flex: 3,
-          child: _buildCameraPreview(viewModel),
-        ),
-        Expanded(
-          flex: 2,
-          child: _buildProgressSection(viewModel),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCameraPreview(CalibrationViewModel viewModel) {
-    if (viewModel.cameraController == null) {
-      return const Center(
-        child: Text(
-          'Camara no disponible',
-          style: TextStyle(color: Colors.white54),
-        ),
-      );
-    }
-
-    return Container(
-      margin: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: _getStepColor(viewModel.currentStep),
-          width: 3,
-        ),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(21),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            CameraPreview(viewModel.cameraController!),
-            _buildFaceOverlay(viewModel),
+            ),
           ],
         ),
       ),
@@ -331,22 +279,24 @@ class _CalibrationContentState extends State<_CalibrationContent> {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.black54,
+        color: Colors.black.withOpacity(0.7),
         borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: Colors.white54, width: 1.5),
       ),
-      child: Row(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: Colors.white, size: 24),
-          const SizedBox(width: 12),
+          Icon(icon, color: Colors.white, size: 40),
+          const SizedBox(height: 12),
           Text(
             text,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
             ),
           ),
         ],
@@ -354,176 +304,60 @@ class _CalibrationContentState extends State<_CalibrationContent> {
     );
   }
 
-  Widget _buildProgressSection(CalibrationViewModel viewModel) {
+  Widget _buildBottomPanel(BuildContext context, CalibrationViewModel viewModel) {
     final progress = viewModel.currentProgress;
 
-    return Padding(
-      padding: const EdgeInsets.all(24),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.transparent, Colors.black],
+          stops: [0.0, 0.4],
+        ),
+      ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          _buildStepIndicators(viewModel),
-          const SizedBox(height: 24),
           if (progress != null) ...[
             Text(
               progress.message,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.w500,
+                shadows: [Shadow(blurRadius: 4, color: Colors.black)],
               ),
             ),
             const SizedBox(height: 16),
             _buildProgressBar(viewModel.currentStep, progress.stepProgress),
+            const SizedBox(height: 20),
           ],
+
+          TextButton(
+            onPressed: () {
+              viewModel.resetCalibration();
+              setState(() {
+                _calibrationStarted = false;
+              });
+            },
+            child: const Text('Cancelar', style: TextStyle(color: Colors.white70)),
+          ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildStepIndicators(CalibrationViewModel viewModel) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _buildStepDot(
-          CalibrationStep.faceDetection,
-          viewModel.currentStep,
-          Icons.face,
-        ),
-        _buildStepConnector(viewModel.currentStep.index >= 1),
-        _buildStepDot(
-          CalibrationStep.lighting,
-          viewModel.currentStep,
-          Icons.wb_sunny_outlined,
-        ),
-        _buildStepConnector(viewModel.currentStep.index >= 2),
-        _buildStepDot(
-          CalibrationStep.eyeBaseline,
-          viewModel.currentStep,
-          Icons.visibility,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStepDot(CalibrationStep step, CalibrationStep current, IconData icon) {
-    final isActive = current == step;
-    final isCompleted = current.index > step.index;
-
-    Color bgColor;
-    Color iconColor;
-
-    if (isCompleted) {
-      bgColor = const Color(0xFF4CAF50);
-      iconColor = Colors.white;
-    } else if (isActive) {
-      bgColor = const Color(0xFF2196F3);
-      iconColor = Colors.white;
-    } else {
-      bgColor = const Color(0xFF3D3D3D);
-      iconColor = Colors.white54;
-    }
-
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: bgColor,
-      ),
-      child: Icon(icon, color: iconColor, size: 24),
-    );
-  }
-
-  Widget _buildStepConnector(bool isActive) {
-    return Container(
-      width: 40,
-      height: 3,
-      margin: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(
-        color: isActive ? const Color(0xFF4CAF50) : const Color(0xFF3D3D3D),
-        borderRadius: BorderRadius.circular(2),
       ),
     );
   }
 
   Widget _buildProgressBar(CalibrationStep step, double progress) {
-    return Column(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: LinearProgressIndicator(
-            value: progress,
-            minHeight: 8,
-            backgroundColor: const Color(0xFF3D3D3D),
-            valueColor: AlwaysStoppedAnimation<Color>(_getStepColor(step)),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '${(progress * 100).toInt()}%',
-          style: TextStyle(
-            color: _getStepColor(step),
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFooter(BuildContext context, CalibrationViewModel viewModel) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          if (!_calibrationStarted)
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                onPressed: viewModel.isInitialized
-                    ? () {
-                  setState(() {
-                    _calibrationStarted = true;
-                  });
-                  viewModel.startCalibration();
-                }
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4CAF50),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  elevation: 0,
-                ),
-                child: const Text(
-                  'Iniciar Calibracion',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            )
-          else if (viewModel.isCalibrating)
-            TextButton(
-              onPressed: () {
-                viewModel.resetCalibration();
-                setState(() {
-                  _calibrationStarted = false;
-                });
-              },
-              child: const Text(
-                'Cancelar',
-                style: TextStyle(
-                  color: Colors.white54,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-        ],
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: LinearProgressIndicator(
+        value: progress,
+        minHeight: 8,
+        backgroundColor: Colors.white24,
+        valueColor: AlwaysStoppedAnimation<Color>(_getStepColor(step)),
       ),
     );
   }
@@ -554,37 +388,40 @@ class _FaceGuidePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width * 0.35;
+
+    // CORRECCIÓN DE FORMA:
+    // Hacemos el óvalo más estrecho (menos ancho) y mantenemos la altura
+    // para asemejarse más a un rostro humano y no un círculo redondo.
+    final faceWidth = size.width * 0.55;  // Reducido de 0.7-0.8 a 0.55
+    final faceHeight = size.width * 0.85; // Altura proporcional
+
+    final rect = Rect.fromCenter(
+      center: center,
+      width: faceWidth,
+      height: faceHeight,
+    );
 
     final paint = Paint()
       ..color = _getColor().withOpacity(0.5)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;
 
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: center,
-        width: radius * 1.6,
-        height: radius * 2,
-      ),
-      paint,
-    );
+    // Dibujar el óvalo guía base
+    canvas.drawOval(rect, paint);
 
+    // Dibujar el progreso como un arco sobre el óvalo
     if (progress > 0) {
       final progressPaint = Paint()
         ..color = _getColor()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 4
+        ..strokeWidth = 6
         ..strokeCap = StrokeCap.round;
 
+      // Dibujamos el arco ajustado al mismo rect
+      // Empezamos arriba (-pi/2)
       final sweepAngle = 2 * 3.14159 * progress;
-
       canvas.drawArc(
-        Rect.fromCenter(
-          center: center,
-          width: radius * 1.7,
-          height: radius * 2.1,
-        ),
+        rect, // Usamos el mismo rect para que coincida perfectamente
         -3.14159 / 2,
         sweepAngle,
         false,

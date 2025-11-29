@@ -5,26 +5,39 @@ import 'presentation/providers/face_mesh_view_model.dart';
 import 'services/camera_service.dart';
 import 'services/face_mesh_service.dart';
 import 'logic/state_aggregator.dart';
+import 'calibration/calibration_service.dart'; // Importar
 
 class SentimentAnalysisManager extends StatelessWidget {
   final String userId;
   final String lessonId;
+  final CalibrationResult? calibration; // Nuevo parámetro
   final void Function(CombinedState state)? onStateChanged;
 
   const SentimentAnalysisManager({
     super.key,
     required this.userId,
     required this.lessonId,
+    this.calibration, // Recibir calibración
     this.onStateChanged,
   });
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => FaceMeshViewModel(
-        cameraService: CameraService(),
-        faceMeshService: FaceMeshService(),
-      ),
+      create: (_) {
+        // Crear instancia
+        final viewModel = FaceMeshViewModel(
+          cameraService: CameraService(),
+          faceMeshService: FaceMeshService(),
+        );
+
+        // APLICAR CALIBRACIÓN SI EXISTE
+        if (calibration != null) {
+          viewModel.applyCalibration(calibration!);
+        }
+
+        return viewModel;
+      },
       child: _AnalysisOverlay(onStateChanged: onStateChanged),
     );
   }
@@ -46,32 +59,17 @@ class _AnalysisOverlay extends StatelessWidget {
     }
 
     if (!viewModel.isInitialized || viewModel.cameraController == null) {
+      // Indicador pequeño de carga
       return Positioned(
         right: 16,
         bottom: 16,
         child: Container(
-          width: 120,
-          height: 160,
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Colors.black54,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: const Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'Iniciando...',
-                  style: TextStyle(color: Colors.white70, fontSize: 11),
-                ),
-              ],
-            ),
-          ),
+          child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
         ),
       );
     }
@@ -106,29 +104,6 @@ class _AnalysisOverlay extends StatelessWidget {
             bottom: 160,
             child: _buildInfoPanel(context, viewModel),
           ),
-        Positioned(
-          right: 120,
-          bottom: 16,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: viewModel.recalibrate,
-              borderRadius: BorderRadius.circular(20),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Icon(
-                  Icons.refresh,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -176,48 +151,24 @@ class _AnalysisOverlay extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           if (state.faceDetected) ...[
-            _buildMetricRow('Emocion', state.emotion, Colors.white70),
+            _buildMetricRow('Emoción', state.emotion, Colors.white70),
             _buildMetricRow(
               'Confianza',
               '${(state.confidence * 100).toStringAsFixed(0)}%',
               _getConfidenceColor(state.confidence),
             ),
           ],
-          if (state.drowsiness != null) ...[
-            const Divider(color: Colors.white24, height: 12),
-            _buildMetricRow(
-              'EAR',
-              state.drowsiness!.ear.toStringAsFixed(3),
-              state.drowsiness!.ear < 0.22 ? Colors.orange : Colors.green,
-            ),
-            if (state.drowsiness!.isYawning)
-              _buildMetricRow('Estado', 'BOSTEZANDO', Colors.orange),
-          ],
           if (state.isCalibrating) ...[
             const SizedBox(height: 6),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.yellow.withOpacity(0.2),
+                color: Colors.blue.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 10,
-                    height: 10,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 1.5,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.yellow),
-                    ),
-                  ),
-                  SizedBox(width: 4),
-                  Text(
-                    'Calibrando...',
-                    style: TextStyle(color: Colors.yellow, fontSize: 10),
-                  ),
-                ],
+              child: const Text(
+                'Usando valores por defecto',
+                style: TextStyle(color: Colors.blue, fontSize: 10),
               ),
             ),
           ],
@@ -246,22 +197,14 @@ class _AnalysisOverlay extends StatelessWidget {
 
   Color _getStateColor(String state) {
     switch (state) {
-      case 'concentrado':
-        return Colors.green;
-      case 'entendiendo':
-        return Colors.greenAccent;
-      case 'distraido':
-        return Colors.orange;
-      case 'durmiendo':
-        return const Color(0xFF607D8B);
-      case 'no_mirando':
-        return Colors.grey;
-      case 'frustrado':
-        return Colors.red;
-      case 'sin_rostro':
-        return Colors.grey.shade600;
-      default:
-        return Colors.white;
+      case 'concentrado': return Colors.green;
+      case 'entendiendo': return Colors.greenAccent;
+      case 'distraido': return Colors.orange;
+      case 'durmiendo': return const Color(0xFF607D8B);
+      case 'no_mirando': return Colors.grey;
+      case 'frustrado': return Colors.red;
+      case 'sin_rostro': return Colors.grey.shade600;
+      default: return Colors.white;
     }
   }
 
@@ -272,16 +215,6 @@ class _AnalysisOverlay extends StatelessWidget {
   }
 
   String _getStateLabel(String state) {
-    const labels = {
-      'concentrado': 'CONCENTRADO',
-      'entendiendo': 'ENTENDIENDO',
-      'distraido': 'DISTRAIDO',
-      'durmiendo': 'SOMNOLIENTO',
-      'no_mirando': 'NO MIRA',
-      'frustrado': 'FRUSTRADO',
-      'sin_rostro': 'SIN ROSTRO',
-      'desconocido': 'ANALIZANDO...',
-    };
-    return labels[state] ?? state.toUpperCase();
+    return state.toUpperCase();
   }
 }

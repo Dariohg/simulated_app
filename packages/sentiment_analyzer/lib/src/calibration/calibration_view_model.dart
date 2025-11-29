@@ -8,11 +8,13 @@ import 'package:google_mlkit_face_mesh_detection/google_mlkit_face_mesh_detectio
 import '../services/camera_service.dart';
 import '../services/face_mesh_service.dart';
 import 'calibration_service.dart';
+import 'calibration_storage.dart'; // Importar storage
 
 class CalibrationViewModel extends ChangeNotifier {
   final CameraService _cameraService;
   final FaceMeshService _faceMeshService;
   final CalibrationService _calibrationService;
+  final CalibrationStorage _storage = CalibrationStorage(); // Instancia de storage
 
   bool _isInitialized = false;
   CalibrationProgress? _currentProgress;
@@ -102,9 +104,16 @@ class CalibrationViewModel extends ChangeNotifier {
         brightness: brightness,
       );
 
+      // Si terminó de calibrar, guardar y detener
       if (_calibrationService.isCalibrated) {
         _cameraService.stopImageStream();
         _triggerVibration();
+
+        // GUARDADO AUTOMÁTICO
+        if (_calibrationService.lastResult != null) {
+          await _storage.save(_calibrationService.lastResult!);
+          debugPrint('[CalibrationViewModel] Calibración guardada exitosamente.');
+        }
       }
     } catch (e) {
       debugPrint('[CalibrationViewModel] Error procesando frame: $e');
@@ -125,7 +134,6 @@ class CalibrationViewModel extends ChangeNotifier {
 
   double _calculateBrightness(CameraImage image) {
     if (image.planes.isEmpty) return 0.5;
-
     final bytes = image.planes[0].bytes;
     if (bytes.isEmpty) return 0.5;
 
@@ -139,7 +147,6 @@ class CalibrationViewModel extends ChangeNotifier {
     }
 
     if (count == 0) return 0.5;
-
     return (sum / count) / 255.0;
   }
 
