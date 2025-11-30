@@ -118,7 +118,7 @@ class _FloatingMenuOverlayState extends State<FloatingMenuOverlay> {
             IconButton(icon: const Icon(Icons.close, color: AppColors.iconClose), onPressed: () => setState(() => _isExpanded = false)),
             if (_hasAlert)
               IconButton(icon: const Icon(Icons.notifications_active, color: AppColors.notificationDot), onPressed: _showAlertDetail),
-            IconButton(icon: const Icon(Icons.pause, color: AppColors.iconPause), onPressed: () => widget.sessionManager.pauseSession(manual: true)),
+            IconButton(icon: const Icon(Icons.pause, color: AppColors.iconPause), onPressed: () => widget.sessionManager.pauseSession()),
             IconButton(icon: const Icon(Icons.play_arrow, color: AppColors.iconPlay), onPressed: () => widget.sessionManager.resumeSession()),
           ],
         ),

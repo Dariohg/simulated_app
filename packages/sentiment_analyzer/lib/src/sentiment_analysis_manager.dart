@@ -197,7 +197,7 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> wit
     _stopFrameTransmission();
     _interventionSubscription?.cancel();
     _monitoringWs.dispose();
-    _feedbackService.disconnect();
+    _feedbackService.dispose();
     _viewModel.dispose();
     super.dispose();
   }
@@ -206,7 +206,12 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> wit
   Widget build(BuildContext context) {
     return ChangeNotifierProvider.value(
       value: _viewModel,
-      child: const AnalysisOverlay(),
+      child: AnalysisOverlay(
+        feedbackStream: _feedbackService.feedbackStream,
+        sessionManager: widget.sessionManager,
+        onVideoRequested: widget.onVideoRequested,
+        onVibrateRequested: widget.onVibrateRequested,
+      ),
     );
   }
 }
