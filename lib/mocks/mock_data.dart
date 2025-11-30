@@ -18,8 +18,6 @@ class MockLesson {
   final String subtitle;
   final String content;
   final String activityType;
-  final int durationMinutes;
-  final String difficulty;
 
   const MockLesson({
     required this.externalActivityId,
@@ -27,8 +25,6 @@ class MockLesson {
     required this.subtitle,
     required this.content,
     required this.activityType,
-    required this.durationMinutes,
-    required this.difficulty,
   });
 }
 
@@ -83,8 +79,6 @@ Hoy en dia, la IA esta presente en nuestras vidas diarias: desde asistentes
 virtuales hasta sistemas de recomendacion y vehiculos autonomos.
       ''',
       activityType: 'reading',
-      durationMinutes: 15,
-      difficulty: 'beginner',
     ),
     MockLesson(
       externalActivityId: 102,
@@ -122,8 +116,6 @@ EJERCICIOS:
 4. 72 / 8 = 9
       ''',
       activityType: 'reading',
-      durationMinutes: 12,
-      difficulty: 'beginner',
     ),
     MockLesson(
       externalActivityId: 103,
@@ -170,8 +162,6 @@ edad = int(input("Cuantos años tienes? "))
 print(f"Hola {nombre}, tienes {edad} años")
       ''',
       activityType: 'reading',
-      durationMinutes: 18,
-      difficulty: 'intermediate',
     ),
     MockLesson(
       externalActivityId: 104,
@@ -228,8 +218,6 @@ LOS PLANETAS (en orden desde el Sol):
    - Luna Triton orbita en sentido contrario
       ''',
       activityType: 'reading',
-      durationMinutes: 20,
-      difficulty: 'beginner',
     ),
   ];
 

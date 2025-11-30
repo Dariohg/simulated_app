@@ -69,9 +69,6 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
 
     if (success) {
       _activityStarted = true;
-      debugPrint('[ActivityScreen] Actividad iniciada en servidor');
-    } else {
-      debugPrint('[ActivityScreen] Error iniciando actividad en servidor');
     }
   }
 
@@ -89,9 +86,7 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Salir de la leccion'),
-        content: const Text(
-          'Tienes una leccion en progreso. Que deseas hacer?',
-        ),
+        content: const Text('Tienes una leccion en progreso. Que deseas hacer?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, 'cancel'),
@@ -132,11 +127,8 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
 
     final success = await sessionManager.completeActivity(feedback: feedback);
 
-    if (success) {
-      debugPrint('[ActivityScreen] Actividad completada');
-      if (mounted) {
-        Navigator.pop(context, true);
-      }
+    if (success && mounted) {
+      Navigator.pop(context, true);
     }
   }
 
@@ -145,11 +137,8 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
 
     final success = await sessionManager.abandonActivity();
 
-    if (success) {
-      debugPrint('[ActivityScreen] Actividad abandonada');
-      if (mounted) {
-        Navigator.pop(context, false);
-      }
+    if (success && mounted) {
+      Navigator.pop(context, false);
     }
   }
 
@@ -173,8 +162,6 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
   }
 
   void _handleIntervention(String type, double confidence) {
-    debugPrint('[ActivityScreen] Intervencion: $type (confianza: $confidence)');
-
     setState(() {
       _lastIntervention = type;
       _showInterventionBanner = true;
@@ -204,8 +191,7 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
       builder: (context) => AlertDialog(
         title: const Text('Sugerencia de descanso'),
         content: const Text(
-          'Parece que necesitas un descanso. '
-              'Te gustaria pausar la leccion por unos minutos?',
+          'Parece que necesitas un descanso. Te gustaria pausar la leccion por unos minutos?',
         ),
         actions: [
           TextButton(
@@ -271,42 +257,25 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                _buildActivityTypeIcon(),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.lesson.title,
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      if (widget.lesson.subtitle.isNotEmpty)
-                        Text(
-                          widget.lesson.subtitle,
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                    ],
+            _buildActivityTypeIcon(),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.lesson.title,
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(Icons.schedule, size: 16),
-                const SizedBox(width: 4),
-                Text('${widget.lesson.durationMinutes} min'),
-                const SizedBox(width: 16),
-                const Icon(Icons.signal_cellular_alt, size: 16),
-                const SizedBox(width: 4),
-                Text(_getDifficultyLabel()),
-              ],
+                  if (widget.lesson.subtitle.isNotEmpty)
+                    Text(
+                      widget.lesson.subtitle,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                ],
+              ),
             ),
           ],
         ),
@@ -333,7 +302,7 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
         break;
       case 'exercise':
         icon = Icons.edit_note;
-        color = Colors.purple;
+        color = Colors.green;
         break;
       case 'coding':
         icon = Icons.code;
@@ -349,19 +318,6 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
       backgroundColor: color.withOpacity(0.2),
       child: Icon(icon, color: color, size: 28),
     );
-  }
-
-  String _getDifficultyLabel() {
-    switch (widget.lesson.difficulty) {
-      case 'beginner':
-        return 'Facil';
-      case 'intermediate':
-        return 'Medio';
-      case 'advanced':
-        return 'Dificil';
-      default:
-        return widget.lesson.difficulty;
-    }
   }
 
   Widget _buildContent() {
@@ -437,7 +393,7 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
         message = 'Ayuda disponible';
         break;
       case 'pause':
-        color = Colors.purple;
+        color = Colors.green;
         icon = Icons.pause_circle;
         message = 'Considera tomar un descanso';
         break;

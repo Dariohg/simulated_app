@@ -35,20 +35,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
-        debugPrint('[HomeScreen] App en background, pausando sesion');
         sessionManager.pauseSession();
         break;
-
       case AppLifecycleState.resumed:
-        debugPrint('[HomeScreen] App en foreground, reanudando sesion');
         sessionManager.resumeSession();
         break;
-
       case AppLifecycleState.detached:
-        debugPrint('[HomeScreen] App cerrada, finalizando sesion');
         sessionManager.finalizeSession();
         break;
-
       case AppLifecycleState.hidden:
         break;
     }
@@ -255,25 +249,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       child: ListTile(
         leading: _buildLessonIcon(lesson.activityType),
         title: Text(lesson.title),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(lesson.subtitle),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(Icons.schedule, size: 14, color: Colors.grey.shade600),
-                const SizedBox(width: 4),
-                Text(
-                  '${lesson.durationMinutes} min',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                ),
-                const SizedBox(width: 12),
-                _buildDifficultyBadge(lesson.difficulty),
-              ],
-            ),
-          ],
-        ),
+        subtitle: Text(lesson.subtitle),
         trailing: const Icon(Icons.play_circle_fill, color: Colors.blue, size: 32),
         onTap: () => _startLesson(lesson),
       ),
@@ -299,7 +275,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         break;
       case 'exercise':
         icon = Icons.edit_note;
-        color = Colors.purple;
+        color = Colors.green;
         break;
       case 'coding':
         icon = Icons.code;
@@ -313,41 +289,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return CircleAvatar(
       backgroundColor: color.withOpacity(0.2),
       child: Icon(icon, color: color),
-    );
-  }
-
-  Widget _buildDifficultyBadge(String difficulty) {
-    String label;
-    Color color;
-
-    switch (difficulty) {
-      case 'beginner':
-        label = 'Facil';
-        color = Colors.green;
-        break;
-      case 'intermediate':
-        label = 'Medio';
-        color = Colors.orange;
-        break;
-      case 'advanced':
-        label = 'Dificil';
-        color = Colors.red;
-        break;
-      default:
-        label = difficulty;
-        color = Colors.grey;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold),
-      ),
     );
   }
 
@@ -370,8 +311,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       builder: (context) => AlertDialog(
         title: const Text('Calibracion necesaria'),
         content: const Text(
-          'Para una mejor experiencia de aprendizaje, necesitas calibrar '
-              'el sistema de monitoreo primero.',
+          'Para una mejor experiencia de aprendizaje, necesitas calibrar el sistema de monitoreo primero.',
         ),
         actions: [
           TextButton(
