@@ -13,88 +13,144 @@ class HttpNetworkService implements SentimentNetworkInterface {
     required this.apiKey,
   });
 
+  Map<String, String> get _headers => {
+    'Authorization': 'Bearer $apiKey',
+    'Content-Type': 'application/json',
+  };
+
   @override
-  Future<void> sendSessionStart(int userId) async {
-    try {
-      await post('/session/start', {'userId': userId});
-    } catch (e) {
-      print('Error sending session start: $e');
-    }
+  Future<Map<String, dynamic>> createSession({
+    required int userId,
+    required String disabilityType,
+    required bool cognitiveAnalysisEnabled,
+  }) async {
+    return await _post('/sessions/', {
+      'user_id': userId,
+      'disability_type': disabilityType,
+      'cognitive_analysis_enabled': cognitiveAnalysisEnabled,
+    });
   }
 
   @override
-  Future<void> sendSessionEnd(int userId) async {
-    try {
-      await post('/session/end', {'userId': userId});
-    } catch (e) {
-      print('Error sending session end: $e');
-    }
+  Future<Map<String, dynamic>> getSession(String sessionId) async {
+    return await _get('/sessions/$sessionId');
   }
 
   @override
-  Future<void> sendHeartbeat(int userId) async {
-    try {
-      await post('/session/heartbeat', {'userId': userId});
-    } catch (e) {
-      print('Error sending heartbeat: $e');
-    }
+  Future<void> sendHeartbeat(String sessionId) async {
+    await _post('/sessions/$sessionId/heartbeat', {});
   }
 
   @override
-  Future<void> sendAnalysisData(Map<String, dynamic> data) async {
-    try {
-      await post('/session/data', data);
-    } catch (e) {
-      print('Error sending analysis data: $e');
-    }
+  Future<void> pauseSession(String sessionId) async {
+    await _post('/sessions/$sessionId/pause', {});
   }
 
-  Future<Map<String, dynamic>> post(String endpoint, Map<String, dynamic> body) async {
+  @override
+  Future<void> resumeSession(String sessionId) async {
+    await _post('/sessions/$sessionId/resume', {});
+  }
+
+  @override
+  Future<Map<String, dynamic>> finalizeSession(String sessionId) async {
+    return await _delete('/sessions/$sessionId');
+  }
+
+  @override
+  Future<Map<String, dynamic>> startActivity({
+    required String sessionId,
+    required int externalActivityId,
+    required String title,
+    String? subtitle,
+    String? content,
+    required String activityType,
+  }) async {
+    return await _post('/sessions/$sessionId/activity/start', {
+      'external_activity_id': externalActivityId,
+      'title': title,
+      'subtitle': subtitle,
+      'content': content,
+      'activity_type': activityType,
+    });
+  }
+
+  @override
+  Future<Map<String, dynamic>> completeActivity({
+    required String sessionId,
+    required int externalActivityId,
+    required Map<String, dynamic> feedback,
+  }) async {
+    return await _post('/sessions/$sessionId/activity/complete', {
+      'external_activity_id': externalActivityId,
+      'feedback': feedback,
+    });
+  }
+
+  @override
+  Future<Map<String, dynamic>> abandonActivity({
+    required String sessionId,
+    required int externalActivityId,
+  }) async {
+    return await _post('/sessions/$sessionId/activity/abandon', {
+      'external_activity_id': externalActivityId,
+    });
+  }
+
+  @override
+  Future<void> updateConfig({
+    required String sessionId,
+    required bool cognitiveAnalysisEnabled,
+    required bool textNotifications,
+    required bool videoSuggestions,
+    required bool vibrationAlerts,
+    required bool pauseSuggestions,
+  }) async {
+    await _post('/sessions/$sessionId/config', {
+      'cognitive_analysis_enabled': cognitiveAnalysisEnabled,
+      'text_notifications': textNotifications,
+      'video_suggestions': videoSuggestions,
+      'vibration_alerts': vibrationAlerts,
+      'pause_suggestions': pauseSuggestions,
+    });
+  }
+
+  Future<Map<String, dynamic>> _post(String endpoint, Map<String, dynamic> body) async {
     try {
       final uri = Uri.parse('$baseUrl$endpoint');
       final response = await _client.post(
         uri,
-        headers: {
-          'Authorization': 'Bearer $apiKey',
-          'Content-Type': 'application/json',
-        },
+        headers: _headers,
         body: jsonEncode(body),
       );
       return _processResponse(response);
+    } on SocketException catch (e) {
+      throw NetworkException('Sin conexion a internet: $e');
     } catch (e) {
-      throw Exception('Error POST: $e');
+      throw NetworkException('Error en POST $endpoint: $e');
     }
   }
 
-  Future<Map<String, dynamic>> delete(String endpoint) async {
+  Future<Map<String, dynamic>> _get(String endpoint) async {
     try {
       final uri = Uri.parse('$baseUrl$endpoint');
-      final response = await _client.delete(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $apiKey',
-          'Content-Type': 'application/json',
-        },
-      );
+      final response = await _client.get(uri, headers: _headers);
       return _processResponse(response);
+    } on SocketException catch (e) {
+      throw NetworkException('Sin conexion a internet: $e');
     } catch (e) {
-      throw Exception('Error DELETE: $e');
+      throw NetworkException('Error en GET $endpoint: $e');
     }
   }
 
-  Future<Map<String, dynamic>> get(String endpoint) async {
+  Future<Map<String, dynamic>> _delete(String endpoint) async {
     try {
       final uri = Uri.parse('$baseUrl$endpoint');
-      final response = await _client.get(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $apiKey',
-          'Content-Type': 'application/json',
-        },
-      );
+      final response = await _client.delete(uri, headers: _headers);
       return _processResponse(response);
+    } on SocketException catch (e) {
+      throw NetworkException('Sin conexion a internet: $e');
     } catch (e) {
-      throw Exception('Error GET: $e');
+      throw NetworkException('Error en DELETE $endpoint: $e');
     }
   }
 
@@ -102,8 +158,44 @@ class HttpNetworkService implements SentimentNetworkInterface {
     if (response.statusCode >= 200 && response.statusCode < 300) {
       if (response.body.isEmpty) return {};
       return jsonDecode(response.body);
+    } else if (response.statusCode == 401) {
+      throw AuthException('No autorizado: API Key invalida');
+    } else if (response.statusCode == 404) {
+      throw NotFoundException('Recurso no encontrado');
     } else {
-      throw HttpException('${response.statusCode}: ${response.body}');
+      throw ServerException('Error del servidor: ${response.statusCode} - ${response.body}');
     }
   }
+
+  void dispose() {
+    _client.close();
+  }
+}
+
+class NetworkException implements Exception {
+  final String message;
+  NetworkException(this.message);
+  @override
+  String toString() => message;
+}
+
+class AuthException implements Exception {
+  final String message;
+  AuthException(this.message);
+  @override
+  String toString() => message;
+}
+
+class NotFoundException implements Exception {
+  final String message;
+  NotFoundException(this.message);
+  @override
+  String toString() => message;
+}
+
+class ServerException implements Exception {
+  final String message;
+  ServerException(this.message);
+  @override
+  String toString() => message;
 }

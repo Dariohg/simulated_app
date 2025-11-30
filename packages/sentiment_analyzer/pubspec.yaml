@@ -19,6 +19,7 @@ dependencies:
   shared_preferences: ^2.2.0
   connectivity_plus: ^5.0.2
   dart_amqp: ^0.2.5
+  web_socket_channel: ^2.4.0
 
 dev_dependencies:
   flutter_test:

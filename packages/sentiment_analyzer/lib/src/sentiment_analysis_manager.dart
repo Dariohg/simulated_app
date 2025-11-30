@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,19 +8,19 @@ import 'presentation/analysis/widgets/analysis_overlay.dart';
 import 'data/services/camera_service.dart';
 import 'data/services/face_mesh_service.dart';
 import 'data/services/feedback_service.dart';
-import 'data/interfaces/network_interface.dart';
+import 'data/services/monitoring_websocket_service.dart';
 import 'data/models/calibration_result.dart';
 
 import 'core/logic/state_aggregator.dart';
 import 'core/logic/session_manager.dart';
 
 class SentimentAnalysisManager extends StatefulWidget {
-  final String userId;
-  final String lessonId;
+  final SessionManager sessionManager;
+  final int externalActivityId;
   final CalibrationResult? calibration;
   final void Function(CombinedState state)? onStateChanged;
 
-  final SentimentNetworkInterface networkInterface;
+  final String monitoringWebSocketUrl;
 
   final String amqpHost;
   final String amqpQueue;
@@ -30,14 +31,15 @@ class SentimentAnalysisManager extends StatefulWidget {
 
   final Function(String url)? onVideoRequested;
   final VoidCallback? onVibrateRequested;
+  final Function(String type, double confidence)? onInterventionReceived;
 
   const SentimentAnalysisManager({
     super.key,
-    required this.userId,
-    required this.lessonId,
+    required this.sessionManager,
+    required this.externalActivityId,
     this.calibration,
     this.onStateChanged,
-    required this.networkInterface,
+    required this.monitoringWebSocketUrl,
     this.amqpHost = 'localhost',
     this.amqpQueue = 'feedback_queue',
     this.amqpUser = 'guest',
@@ -46,6 +48,7 @@ class SentimentAnalysisManager extends StatefulWidget {
     this.amqpPort = 5672,
     this.onVideoRequested,
     this.onVibrateRequested,
+    this.onInterventionReceived,
   });
 
   @override
@@ -53,18 +56,22 @@ class SentimentAnalysisManager extends StatefulWidget {
 }
 
 class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> with WidgetsBindingObserver {
-  late SessionManager _sessionManager;
   late FeedbackService _feedbackService;
   late AnalysisViewModel _viewModel;
+  late MonitoringWebSocketService _monitoringWs;
+
+  Timer? _frameTimer;
+  StreamSubscription? _interventionSubscription;
+
+  static const Duration frameInterval = Duration(milliseconds: 1000);
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _sessionManager = SessionManager(
-      network: widget.networkInterface,
-      userId: int.tryParse(widget.userId) ?? 0,
+    _monitoringWs = MonitoringWebSocketService(
+      baseUrl: widget.monitoringWebSocketUrl,
     );
 
     _feedbackService = FeedbackService();
@@ -86,63 +93,120 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> wit
       _viewModel.applyCalibration(widget.calibration!);
     }
 
-    _sessionManager.setDataProvider(() {
-      if (_viewModel.currentState != null) {
-        return _viewModel.currentState!.toJson(
-            int.tryParse(widget.userId) ?? 0,
-            widget.lessonId
-        );
-      }
-      return {};
-    });
+    _connectMonitoringWebSocket();
+    _setupInterventionListener();
+  }
 
-    _sessionManager.startSession();
+  Future<void> _connectMonitoringWebSocket() async {
+    final sessionId = widget.sessionManager.sessionId;
+    if (sessionId == null) {
+      debugPrint('[SentimentManager] No hay session_id, no se conecta WS');
+      return;
+    }
+
+    final connected = await _monitoringWs.connect(sessionId);
+    if (connected) {
+      _startFrameTransmission();
+    }
+  }
+
+  void _setupInterventionListener() {
+    _interventionSubscription = _monitoringWs.interventions.listen((intervention) {
+      _handleIntervention(intervention);
+    });
+  }
+
+  void _handleIntervention(Map<String, dynamic> intervention) {
+    final type = intervention['type'] as String?;
+    final confidence = (intervention['confidence'] as num?)?.toDouble() ?? 0.0;
+
+    debugPrint('[SentimentManager] Intervencion recibida: $type (confianza: $confidence)');
+
+    widget.onInterventionReceived?.call(type ?? 'unknown', confidence);
+
+    switch (type) {
+      case 'vibration':
+        widget.onVibrateRequested?.call();
+        break;
+      case 'instruction':
+        break;
+      case 'pause':
+        break;
+    }
+  }
+
+  void _startFrameTransmission() {
+    _frameTimer?.cancel();
+    _frameTimer = Timer.periodic(frameInterval, (_) {
+      _sendCurrentFrame();
+    });
+    debugPrint('[SentimentManager] Transmision de frames iniciada');
+  }
+
+  void _stopFrameTransmission() {
+    _frameTimer?.cancel();
+    _frameTimer = null;
+    debugPrint('[SentimentManager] Transmision de frames detenida');
+  }
+
+  void _sendCurrentFrame() {
+    if (!_monitoringWs.isConnected) return;
+    if (_viewModel.currentState == null) return;
+
+    final sessionId = widget.sessionManager.sessionId;
+    if (sessionId == null) return;
+
+    final frameData = _viewModel.currentState!.toJson(
+      userId: widget.sessionManager.userId,
+      sessionId: sessionId,
+      externalActivityId: widget.externalActivityId,
+    );
+
+    _monitoringWs.sendFrame(frameData);
+
+    widget.onStateChanged?.call(_viewModel.currentState!);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
-      _handlePause();
-    } else if (state == AppLifecycleState.resumed) {
-      _handleResume();
+    super.didChangeAppLifecycleState(state);
+
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+        _stopFrameTransmission();
+        _monitoringWs.disconnect();
+        widget.sessionManager.pauseSession();
+        break;
+
+      case AppLifecycleState.resumed:
+        widget.sessionManager.resumeSession().then((_) {
+          _connectMonitoringWebSocket();
+        });
+        break;
+
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        break;
     }
-  }
-
-  void _handlePause() {
-    _sessionManager.pauseSession();
-    _viewModel.setPaused(true);
-  }
-
-  void _handleResume() {
-    _sessionManager.resumeSession();
-    _viewModel.setPaused(false);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _sessionManager.dispose();
-    _feedbackService.dispose();
+    _stopFrameTransmission();
+    _interventionSubscription?.cancel();
+    _monitoringWs.dispose();
+    _feedbackService.disconnect();
     _viewModel.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider<AnalysisViewModel>.value(
-          value: _viewModel,
-        ),
-        Provider<SessionManager>.value(value: _sessionManager),
-      ],
-      child: AnalysisOverlay(
-        onStateChanged: widget.onStateChanged,
-        feedbackStream: _feedbackService.feedbackStream,
-        sessionManager: _sessionManager,
-        onVideoRequested: widget.onVideoRequested,
-        onVibrateRequested: widget.onVibrateRequested,
-      ),
+    return ChangeNotifierProvider.value(
+      value: _viewModel,
+      child: const AnalysisOverlay(),
     );
   }
 }
