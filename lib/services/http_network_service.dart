@@ -76,24 +76,19 @@ class HttpNetworkService implements SentimentNetworkInterface {
 
   @override
   Future<Map<String, dynamic>> completeActivity({
-    required String sessionId,
-    required int externalActivityId,
+    required String activityUuid,
     required Map<String, dynamic> feedback,
   }) async {
-    return await _post('/sessions/$sessionId/activity/complete', {
-      'external_activity_id': externalActivityId,
+    return await _post('/activities/$activityUuid/complete', {
       'feedback': feedback,
     });
   }
 
   @override
   Future<Map<String, dynamic>> abandonActivity({
-    required String sessionId,
-    required int externalActivityId,
+    required String activityUuid,
   }) async {
-    return await _post('/sessions/$sessionId/activity/abandon', {
-      'external_activity_id': externalActivityId,
-    });
+    return await _post('/activities/$activityUuid/abandon', {});
   }
 
   @override
@@ -156,14 +151,21 @@ class HttpNetworkService implements SentimentNetworkInterface {
 
   Map<String, dynamic> _processResponse(http.Response response) {
     if (response.statusCode >= 200 && response.statusCode < 300) {
-      if (response.body.isEmpty) return {};
-      return jsonDecode(response.body);
+      if (response.body.isEmpty) {
+        return {'status': 'ok'};
+      }
+      return jsonDecode(response.body) as Map<String, dynamic>;
     } else if (response.statusCode == 401) {
-      throw AuthException('No autorizado: API Key invalida');
+      throw AuthException('No autorizado');
     } else if (response.statusCode == 404) {
       throw NotFoundException('Recurso no encontrado');
     } else {
-      throw ServerException('Error del servidor: ${response.statusCode} - ${response.body}');
+      String message = 'Error del servidor';
+      try {
+        final body = jsonDecode(response.body);
+        message = body['detail'] ?? body['error'] ?? message;
+      } catch (_) {}
+      throw NetworkException('$message (${response.statusCode})');
     }
   }
 
@@ -175,6 +177,7 @@ class HttpNetworkService implements SentimentNetworkInterface {
 class NetworkException implements Exception {
   final String message;
   NetworkException(this.message);
+
   @override
   String toString() => message;
 }
@@ -182,6 +185,7 @@ class NetworkException implements Exception {
 class AuthException implements Exception {
   final String message;
   AuthException(this.message);
+
   @override
   String toString() => message;
 }
@@ -189,13 +193,7 @@ class AuthException implements Exception {
 class NotFoundException implements Exception {
   final String message;
   NotFoundException(this.message);
-  @override
-  String toString() => message;
-}
 
-class ServerException implements Exception {
-  final String message;
-  ServerException(this.message);
   @override
   String toString() => message;
 }

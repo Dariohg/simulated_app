@@ -22,11 +22,7 @@ class CombinedState {
     this.isCalibrating = false,
   });
 
-  Map<String, dynamic> toJson({
-    required int userId,
-    required String sessionId,
-    required int externalActivityId,
-  }) {
+  Map<String, dynamic> toJson() {
     final scoresList = emotionScores?.entries.map((e) => {
       'emocion': e.key,
       'confianza': e.value,
@@ -34,9 +30,6 @@ class CombinedState {
 
     return {
       'metadata': {
-        'user_id': userId,
-        'session_id': sessionId,
-        'external_activity_id': externalActivityId,
         'timestamp': DateTime.now().toUtc().toIso8601String(),
       },
       'analisis_sentimiento': {
@@ -62,14 +55,6 @@ class CombinedState {
         'rostro_detectado': faceDetected,
       }
     };
-  }
-
-  Map<String, dynamic> toJsonLegacy(int userId, String lessonId) {
-    return toJson(
-      userId: userId,
-      sessionId: lessonId,
-      externalActivityId: 0,
-    );
   }
 }
 

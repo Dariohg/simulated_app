@@ -20,7 +20,8 @@ class SentimentAnalysisManager extends StatefulWidget {
   final CalibrationResult? calibration;
   final void Function(CombinedState state)? onStateChanged;
 
-  final String monitoringWebSocketUrl;
+  final String gatewayUrl;
+  final String apiKey;
 
   final String amqpHost;
   final String amqpQueue;
@@ -39,7 +40,8 @@ class SentimentAnalysisManager extends StatefulWidget {
     required this.externalActivityId,
     this.calibration,
     this.onStateChanged,
-    required this.monitoringWebSocketUrl,
+    required this.gatewayUrl,
+    required this.apiKey,
     this.amqpHost = 'localhost',
     this.amqpQueue = 'feedback_queue',
     this.amqpUser = 'guest',
@@ -71,7 +73,8 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> wit
     WidgetsBinding.instance.addObserver(this);
 
     _monitoringWs = MonitoringWebSocketService(
-      baseUrl: widget.monitoringWebSocketUrl,
+      gatewayUrl: widget.gatewayUrl,
+      apiKey: widget.apiKey,
     );
 
     _feedbackService = FeedbackService();
@@ -99,14 +102,29 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> wit
 
   Future<void> _connectMonitoringWebSocket() async {
     final sessionId = widget.sessionManager.sessionId;
+    final activityUuid = widget.sessionManager.currentActivityUuid;
+
     if (sessionId == null) {
       debugPrint('[SentimentManager] No hay session_id, no se conecta WS');
       return;
     }
 
-    final connected = await _monitoringWs.connect(sessionId);
+    if (activityUuid == null) {
+      debugPrint('[SentimentManager] No hay activity_uuid, no se conecta WS');
+      return;
+    }
+
+    final connected = await _monitoringWs.connect(
+      sessionId: sessionId,
+      activityUuid: activityUuid,
+      userId: widget.sessionManager.userId,
+      externalActivityId: widget.externalActivityId,
+    );
+
     if (connected) {
       _startFrameTransmission();
+    } else {
+      debugPrint('[SentimentManager] Fallo la conexion WebSocket');
     }
   }
 
@@ -153,15 +171,7 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> wit
     if (!_monitoringWs.isConnected) return;
     if (_viewModel.currentState == null) return;
 
-    final sessionId = widget.sessionManager.sessionId;
-    if (sessionId == null) return;
-
-    final frameData = _viewModel.currentState!.toJson(
-      userId: widget.sessionManager.userId,
-      sessionId: sessionId,
-      externalActivityId: widget.externalActivityId,
-    );
-
+    final frameData = _viewModel.currentState!.toJson();
     _monitoringWs.sendFrame(frameData);
 
     widget.onStateChanged?.call(_viewModel.currentState!);

@@ -19,6 +19,7 @@ enum ActivityStatus {
 }
 
 class ActivityInfo {
+  final String activityUuid;
   final int externalActivityId;
   final String title;
   final String? subtitle;
@@ -27,6 +28,7 @@ class ActivityInfo {
   final DateTime startedAt;
 
   ActivityInfo({
+    required this.activityUuid,
     required this.externalActivityId,
     required this.title,
     this.subtitle,
@@ -62,6 +64,8 @@ class SessionManager extends ChangeNotifier {
   SessionStatus get sessionStatus => _sessionStatus;
   ActivityStatus get activityStatus => _activityStatus;
   ActivityInfo? get currentActivity => _currentActivity;
+  String? get currentActivityUuid => _currentActivity?.activityUuid;
+  int? get currentExternalActivityId => _currentActivity?.externalActivityId;
   bool get hasActiveSession => _sessionId != null && _sessionStatus == SessionStatus.active;
   bool get hasActiveActivity => _currentActivity != null && _activityStatus == ActivityStatus.inProgress;
 
@@ -126,6 +130,7 @@ class SessionManager extends ChangeNotifier {
       final currentActivityData = response['current_activity'];
       if (currentActivityData != null) {
         _currentActivity = ActivityInfo(
+          activityUuid: currentActivityData['activity_uuid'] ?? '',
           externalActivityId: currentActivityData['external_activity_id'],
           title: currentActivityData['title'] ?? '',
           activityType: 'recovered',
@@ -168,7 +173,10 @@ class SessionManager extends ChangeNotifier {
       );
 
       if (response['status'] == 'activity_started') {
+        final activityUuid = response['activity_uuid'] as String;
+
         _currentActivity = ActivityInfo(
+          activityUuid: activityUuid,
           externalActivityId: externalActivityId,
           title: title,
           subtitle: subtitle,
@@ -178,7 +186,7 @@ class SessionManager extends ChangeNotifier {
         );
         _activityStatus = ActivityStatus.inProgress;
 
-        debugPrint('[SessionManager] Actividad iniciada exitosamente');
+        debugPrint('[SessionManager] Actividad iniciada: $activityUuid');
         notifyListeners();
         return true;
       }
@@ -197,11 +205,10 @@ class SessionManager extends ChangeNotifier {
     }
 
     try {
-      debugPrint('[SessionManager] Completando actividad: ${_currentActivity!.externalActivityId}');
+      debugPrint('[SessionManager] Completando actividad: ${_currentActivity!.activityUuid}');
 
       final response = await network.completeActivity(
-        sessionId: _sessionId!,
-        externalActivityId: _currentActivity!.externalActivityId,
+        activityUuid: _currentActivity!.activityUuid,
         feedback: feedback,
       );
 
@@ -228,11 +235,10 @@ class SessionManager extends ChangeNotifier {
     }
 
     try {
-      debugPrint('[SessionManager] Abandonando actividad: ${_currentActivity!.externalActivityId}');
+      debugPrint('[SessionManager] Abandonando actividad: ${_currentActivity!.activityUuid}');
 
       final response = await network.abandonActivity(
-        sessionId: _sessionId!,
-        externalActivityId: _currentActivity!.externalActivityId,
+        activityUuid: _currentActivity!.activityUuid,
       );
 
       if (response['status'] == 'abandonada') {
@@ -382,20 +388,6 @@ class SessionManager extends ChangeNotifier {
     }
 
     _isReconnecting = false;
-  }
-
-  Map<String, dynamic>? getCurrentBiometricData() {
-    if (_dataProvider == null) return null;
-
-    final data = _dataProvider!();
-
-    data['metadata']['session_id'] = _sessionId;
-
-    if (_currentActivity != null) {
-      data['metadata']['external_activity_id'] = _currentActivity!.externalActivityId;
-    }
-
-    return data;
   }
 
   @override

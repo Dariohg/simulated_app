@@ -8,16 +8,23 @@ enum WebSocketStatus {
   disconnected,
   connecting,
   connected,
+  handshaking,
+  ready,
   reconnecting,
   error,
 }
 
 class MonitoringWebSocketService extends ChangeNotifier {
-  final String baseUrl;
+  final String gatewayUrl;
+  final String apiKey;
 
   WebSocketChannel? _channel;
   WebSocketStatus _status = WebSocketStatus.disconnected;
+
   String? _currentSessionId;
+  String? _currentActivityUuid;
+  int? _userId;
+  int? _externalActivityId;
 
   StreamSubscription? _subscription;
   Timer? _reconnectTimer;
@@ -27,43 +34,73 @@ class MonitoringWebSocketService extends ChangeNotifier {
   static const int maxReconnectAttempts = 5;
   static const Duration reconnectDelay = Duration(seconds: 2);
   static const Duration pingInterval = Duration(seconds: 30);
+  static const Duration handshakeTimeout = Duration(seconds: 10);
 
   final StreamController<Map<String, dynamic>> _interventionController =
   StreamController<Map<String, dynamic>>.broadcast();
 
   WebSocketStatus get status => _status;
-  bool get isConnected => _status == WebSocketStatus.connected;
+  bool get isConnected => _status == WebSocketStatus.ready;
+  bool get isConnecting => _status == WebSocketStatus.connecting || _status == WebSocketStatus.handshaking;
   Stream<Map<String, dynamic>> get interventions => _interventionController.stream;
+  String? get currentActivityUuid => _currentActivityUuid;
 
-  MonitoringWebSocketService({required this.baseUrl});
+  MonitoringWebSocketService({
+    required this.gatewayUrl,
+    required this.apiKey,
+  });
 
-  Future<bool> connect(String sessionId) async {
-    if (_status == WebSocketStatus.connected && _currentSessionId == sessionId) {
-      debugPrint('[MonitoringWS] Ya conectado a sesion: $sessionId');
+  Future<bool> connect({
+    required String sessionId,
+    required String activityUuid,
+    required int userId,
+    required int externalActivityId,
+  }) async {
+    if (_status == WebSocketStatus.ready &&
+        _currentActivityUuid == activityUuid) {
+      debugPrint('[MonitoringWS] Ya conectado a actividad: $activityUuid');
       return true;
     }
 
     await disconnect();
 
     _currentSessionId = sessionId;
+    _currentActivityUuid = activityUuid;
+    _userId = userId;
+    _externalActivityId = externalActivityId;
+
     _status = WebSocketStatus.connecting;
     notifyListeners();
 
     try {
-      final wsUrl = _buildWebSocketUrl(sessionId);
+      final wsUrl = _buildWebSocketUrl(sessionId, activityUuid);
       debugPrint('[MonitoringWS] Conectando a: $wsUrl');
 
-      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
+      _channel = WebSocketChannel.connect(
+        Uri.parse(wsUrl),
+        protocols: ['websocket'],
+      );
 
       await _channel!.ready;
 
-      _status = WebSocketStatus.connected;
-      _reconnectAttempts = 0;
+      _status = WebSocketStatus.handshaking;
+      notifyListeners();
 
       _setupListeners();
+
+      final handshakeSuccess = await _performHandshake(userId, externalActivityId);
+
+      if (!handshakeSuccess) {
+        debugPrint('[MonitoringWS] Handshake fallido');
+        await disconnect();
+        return false;
+      }
+
+      _status = WebSocketStatus.ready;
+      _reconnectAttempts = 0;
       _startPingTimer();
 
-      debugPrint('[MonitoringWS] Conectado exitosamente');
+      debugPrint('[MonitoringWS] Conectado y listo para actividad $activityUuid');
       notifyListeners();
       return true;
     } catch (e) {
@@ -74,8 +111,8 @@ class MonitoringWebSocketService extends ChangeNotifier {
     }
   }
 
-  String _buildWebSocketUrl(String sessionId) {
-    String wsBase = baseUrl;
+  String _buildWebSocketUrl(String sessionId, String activityUuid) {
+    String wsBase = gatewayUrl;
 
     if (wsBase.startsWith('http://')) {
       wsBase = wsBase.replaceFirst('http://', 'ws://');
@@ -85,7 +122,56 @@ class MonitoringWebSocketService extends ChangeNotifier {
       wsBase = 'ws://$wsBase';
     }
 
-    return '$wsBase/ws/$sessionId';
+    return '$wsBase/ws/$sessionId/$activityUuid?api_key=$apiKey';
+  }
+
+  Future<bool> _performHandshake(int userId, int externalActivityId) async {
+    final completer = Completer<bool>();
+    StreamSubscription? handshakeSubscription;
+    Timer? timeoutTimer;
+
+    try {
+      timeoutTimer = Timer(handshakeTimeout, () {
+        if (!completer.isCompleted) {
+          debugPrint('[MonitoringWS] Timeout en handshake');
+          completer.complete(false);
+        }
+      });
+
+      handshakeSubscription = _channel?.stream.listen((message) {
+        try {
+          final data = jsonDecode(message as String) as Map<String, dynamic>;
+
+          if (data['type'] == 'handshake_ack' && data['status'] == 'ready') {
+            debugPrint('[MonitoringWS] Handshake exitoso');
+            if (!completer.isCompleted) {
+              completer.complete(true);
+            }
+          } else if (data.containsKey('error')) {
+            debugPrint('[MonitoringWS] Error en handshake: ${data['error']}');
+            if (!completer.isCompleted) {
+              completer.complete(false);
+            }
+          }
+        } catch (e) {
+          debugPrint('[MonitoringWS] Error parseando respuesta de handshake: $e');
+        }
+      });
+
+      final handshakeMessage = jsonEncode({
+        'type': 'handshake',
+        'user_id': userId,
+        'external_activity_id': externalActivityId,
+      });
+
+      debugPrint('[MonitoringWS] Enviando handshake: $handshakeMessage');
+      _channel?.sink.add(handshakeMessage);
+
+      return await completer.future;
+    } finally {
+      timeoutTimer?.cancel();
+      await handshakeSubscription?.cancel();
+    }
   }
 
   void _setupListeners() {
@@ -101,9 +187,15 @@ class MonitoringWebSocketService extends ChangeNotifier {
   void _handleMessage(dynamic message) {
     try {
       final data = jsonDecode(message as String) as Map<String, dynamic>;
+
+      if (data['type'] == 'handshake_ack') {
+        return;
+      }
+
       debugPrint('[MonitoringWS] Mensaje recibido: $data');
 
-      if (data.containsKey('intervention_id') || data.containsKey('type')) {
+      if (data.containsKey('intervention_id') ||
+          (data.containsKey('type') && data['type'] != 'pong')) {
         _interventionController.add(data);
       }
     } catch (e) {
@@ -123,7 +215,7 @@ class MonitoringWebSocketService extends ChangeNotifier {
     _status = WebSocketStatus.disconnected;
     notifyListeners();
 
-    if (_currentSessionId != null) {
+    if (_currentActivityUuid != null) {
       _attemptReconnect();
     }
   }
@@ -136,7 +228,12 @@ class MonitoringWebSocketService extends ChangeNotifier {
       return;
     }
 
-    if (_currentSessionId == null) return;
+    if (_currentSessionId == null ||
+        _currentActivityUuid == null ||
+        _userId == null ||
+        _externalActivityId == null) {
+      return;
+    }
 
     _reconnectAttempts++;
     _status = WebSocketStatus.reconnecting;
@@ -147,8 +244,13 @@ class MonitoringWebSocketService extends ChangeNotifier {
 
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(delay, () {
-      if (_currentSessionId != null) {
-        connect(_currentSessionId!);
+      if (_currentActivityUuid != null) {
+        connect(
+          sessionId: _currentSessionId!,
+          activityUuid: _currentActivityUuid!,
+          userId: _userId!,
+          externalActivityId: _externalActivityId!,
+        );
       }
     });
   }
@@ -156,14 +258,14 @@ class MonitoringWebSocketService extends ChangeNotifier {
   void _startPingTimer() {
     _pingTimer?.cancel();
     _pingTimer = Timer.periodic(pingInterval, (_) {
-      if (_status == WebSocketStatus.connected) {
-        sendPing();
+      if (_status == WebSocketStatus.ready) {
+        _sendPing();
       }
     });
   }
 
-  void sendPing() {
-    if (_status != WebSocketStatus.connected) return;
+  void _sendPing() {
+    if (_status != WebSocketStatus.ready) return;
 
     try {
       _channel?.sink.add(jsonEncode({'type': 'ping'}));
@@ -173,8 +275,8 @@ class MonitoringWebSocketService extends ChangeNotifier {
   }
 
   void sendFrame(Map<String, dynamic> frameData) {
-    if (_status != WebSocketStatus.connected) {
-      debugPrint('[MonitoringWS] No conectado, frame descartado');
+    if (_status != WebSocketStatus.ready) {
+      debugPrint('[MonitoringWS] No listo, frame descartado (status: $_status)');
       return;
     }
 
@@ -206,6 +308,9 @@ class MonitoringWebSocketService extends ChangeNotifier {
 
     _channel = null;
     _currentSessionId = null;
+    _currentActivityUuid = null;
+    _userId = null;
+    _externalActivityId = null;
     _status = WebSocketStatus.disconnected;
     _reconnectAttempts = 0;
 

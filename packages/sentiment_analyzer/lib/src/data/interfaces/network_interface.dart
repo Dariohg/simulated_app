@@ -25,14 +25,12 @@ abstract class SentimentNetworkInterface {
   });
 
   Future<Map<String, dynamic>> completeActivity({
-    required String sessionId,
-    required int externalActivityId,
+    required String activityUuid,
     required Map<String, dynamic> feedback,
   });
 
   Future<Map<String, dynamic>> abandonActivity({
-    required String sessionId,
-    required int externalActivityId,
+    required String activityUuid,
   });
 
   Future<void> updateConfig({

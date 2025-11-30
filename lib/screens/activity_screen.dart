@@ -90,7 +90,7 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, 'cancel'),
-            child: const Text('Continuar'),
+            child: const Text('Cancelar'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, 'abandon'),
@@ -117,48 +117,29 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
 
   Future<void> _completeActivity() async {
     final sessionManager = context.read<SessionManager>();
-    final duration = DateTime.now().difference(_startTime ?? DateTime.now());
 
     final feedback = {
-      'completed': true,
-      'duration_seconds': duration.inSeconds,
-      'activity_type': widget.lesson.activityType,
+      'rating': 5,
+      'duration_seconds': DateTime.now().difference(_startTime!).inSeconds,
+      'completed_at': DateTime.now().toIso8601String(),
     };
 
     final success = await sessionManager.completeActivity(feedback: feedback);
 
     if (success && mounted) {
-      Navigator.pop(context, true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Leccion completada exitosamente'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.pop(context);
     }
   }
 
   Future<void> _abandonActivity() async {
     final sessionManager = context.read<SessionManager>();
-
-    final success = await sessionManager.abandonActivity();
-
-    if (success && mounted) {
-      Navigator.pop(context, false);
-    }
-  }
-
-  void _handleVideoRequest(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo abrir el video')),
-        );
-      }
-    }
-  }
-
-  void _handleVibrationRequest() async {
-    if (await Vibration.hasVibrator() ?? false) {
-      Vibration.vibrate(duration: 500);
-    }
+    await sessionManager.abandonActivity();
   }
 
   void _handleIntervention(String type, double confidence) {
@@ -174,14 +155,18 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
         });
       }
     });
+  }
 
-    switch (type) {
-      case 'vibration':
-        _handleVibrationRequest();
-        break;
-      case 'pause':
-        _showPauseSuggestion();
-        break;
+  Future<void> _handleVibration() async {
+    if (await Vibration.hasVibrator() ?? false) {
+      Vibration.vibrate(duration: 500, amplitude: 128);
+    }
+  }
+
+  Future<void> _handleVideoRequest(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
     }
   }
 
@@ -191,7 +176,8 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
       builder: (context) => AlertDialog(
         title: const Text('Sugerencia de descanso'),
         content: const Text(
-          'Parece que necesitas un descanso. Te gustaria pausar la leccion por unos minutos?',
+          'Parece que necesitas un descanso. '
+              'Te gustaria pausar la leccion por unos minutos?',
         ),
         actions: [
           TextButton(
@@ -336,71 +322,92 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
 
   Widget _buildSentimentAnalysisOverlay() {
     final sessionManager = context.read<SessionManager>();
-    final monitoringUrl = dotenv.env['MONITORING_WS_URL'] ?? 'ws://192.168.1.71:3008';
+    final gatewayUrl = dotenv.env['GATEWAY_URL'] ?? 'http://192.168.1.71:3000';
+    final apiKey = dotenv.env['API_KEY'] ?? '';
 
     final amqpUrl = dotenv.env['AMQP_URL'] ?? '';
-    String amqpHost = 'localhost';
-    String amqpUser = 'guest';
-    String amqpPass = 'guest';
-    String amqpVHost = '/';
-    int amqpPort = 5672;
-
-    if (amqpUrl.isNotEmpty) {
-      try {
-        final uri = Uri.parse(amqpUrl);
-        amqpHost = uri.host;
-        amqpPort = uri.port == 0 ? 5672 : uri.port;
-        final userInfo = uri.userInfo.split(':');
-        amqpUser = userInfo.isNotEmpty ? userInfo[0] : 'guest';
-        amqpPass = userInfo.length > 1 ? userInfo[1] : 'guest';
-        amqpVHost = uri.path.length > 1 ? uri.path.substring(1) : '/';
-      } catch (e) {
-        debugPrint('[ActivityScreen] Error parseando AMQP URL: $e');
-      }
-    }
 
     return SentimentAnalysisManager(
       sessionManager: sessionManager,
       externalActivityId: widget.lesson.externalActivityId,
       calibration: _calibration,
-      monitoringWebSocketUrl: monitoringUrl,
-      amqpHost: amqpHost,
-      amqpUser: amqpUser,
-      amqpPass: amqpPass,
-      amqpVirtualHost: amqpVHost,
-      amqpPort: amqpPort,
-      amqpQueue: 'feedback_queue_${sessionManager.userId}',
-      onVideoRequested: _handleVideoRequest,
-      onVibrateRequested: _handleVibrationRequest,
+      gatewayUrl: gatewayUrl,
+      apiKey: apiKey,
+      amqpHost: _parseAmqpHost(amqpUrl),
+      amqpQueue: 'recommendations',
+      amqpUser: _parseAmqpUser(amqpUrl),
+      amqpPass: _parseAmqpPass(amqpUrl),
+      amqpVirtualHost: _parseAmqpVhost(amqpUrl),
+      amqpPort: 5672,
+      onStateChanged: (state) {},
       onInterventionReceived: _handleIntervention,
+      onVibrateRequested: _handleVibration,
+      onVideoRequested: _handleVideoRequest,
     );
   }
 
+  String _parseAmqpHost(String url) {
+    try {
+      final uri = Uri.parse(url.replaceFirst('amqps://', 'https://').replaceFirst('amqp://', 'http://'));
+      return uri.host;
+    } catch (_) {
+      return 'localhost';
+    }
+  }
+
+  String _parseAmqpUser(String url) {
+    try {
+      final uri = Uri.parse(url.replaceFirst('amqps://', 'https://').replaceFirst('amqp://', 'http://'));
+      return uri.userInfo.split(':').first;
+    } catch (_) {
+      return 'guest';
+    }
+  }
+
+  String _parseAmqpPass(String url) {
+    try {
+      final uri = Uri.parse(url.replaceFirst('amqps://', 'https://').replaceFirst('amqp://', 'http://'));
+      final parts = uri.userInfo.split(':');
+      return parts.length > 1 ? parts[1] : 'guest';
+    } catch (_) {
+      return 'guest';
+    }
+  }
+
+  String _parseAmqpVhost(String url) {
+    try {
+      final uri = Uri.parse(url.replaceFirst('amqps://', 'https://').replaceFirst('amqp://', 'http://'));
+      return uri.path.isEmpty ? '/' : uri.path.substring(1);
+    } catch (_) {
+      return '/';
+    }
+  }
+
   Widget _buildInterventionBanner() {
-    Color color;
-    IconData icon;
-    String message;
+    Color bannerColor;
+    String bannerText;
+    IconData bannerIcon;
 
     switch (_lastIntervention) {
       case 'vibration':
-        color = Colors.orange;
-        icon = Icons.notifications_active;
-        message = 'Alerta de atencion';
+        bannerColor = Colors.orange;
+        bannerText = 'Atencion detectada baja';
+        bannerIcon = Icons.vibration;
         break;
       case 'instruction':
-        color = Colors.blue;
-        icon = Icons.help_outline;
-        message = 'Ayuda disponible';
+        bannerColor = Colors.blue;
+        bannerText = 'Sugerencia disponible';
+        bannerIcon = Icons.lightbulb_outline;
         break;
       case 'pause':
-        color = Colors.green;
-        icon = Icons.pause_circle;
-        message = 'Considera tomar un descanso';
+        bannerColor = Colors.purple;
+        bannerText = 'Considera tomar un descanso';
+        bannerIcon = Icons.pause_circle_outline;
         break;
       default:
-        color = Colors.grey;
-        icon = Icons.info;
-        message = 'Intervencion';
+        bannerColor = Colors.grey;
+        bannerText = 'Intervencion';
+        bannerIcon = Icons.info_outline;
     }
 
     return Positioned(
@@ -408,19 +415,21 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
       left: 0,
       right: 0,
       child: Material(
-        color: color,
+        color: bannerColor,
         child: SafeArea(
-          bottom: false,
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                Icon(icon, color: Colors.white),
+                Icon(bannerIcon, color: Colors.white),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    message,
-                    style: const TextStyle(color: Colors.white),
+                    bannerText,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 IconButton(
@@ -442,29 +451,41 @@ class _ActivityScreenState extends State<ActivityScreen> with WidgetsBindingObse
   Widget _buildBottomBar() {
     if (!_activityStarted) return const SizedBox.shrink();
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _abandonActivity,
-                icon: const Icon(Icons.close),
-                label: const Text('Abandonar'),
+    final duration = _startTime != null
+        ? DateTime.now().difference(_startTime!)
+        : Duration.zero;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.timer_outlined, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                '${duration.inMinutes}:${(duration.inSeconds % 60).toString().padLeft(2, '0')}',
+                style: Theme.of(context).textTheme.titleMedium,
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              flex: 2,
-              child: ElevatedButton.icon(
-                onPressed: _completeActivity,
-                icon: const Icon(Icons.check),
-                label: const Text('Completar'),
-              ),
-            ),
-          ],
-        ),
+            ],
+          ),
+          ElevatedButton.icon(
+            onPressed: _completeActivity,
+            icon: const Icon(Icons.check),
+            label: const Text('Completar'),
+          ),
+        ],
       ),
     );
   }
