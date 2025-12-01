@@ -52,11 +52,8 @@ class SessionManager extends ChangeNotifier {
 
   Timer? _heartbeatTimer;
 
-  bool _isReconnecting = false;
-  int _reconnectAttempts = 0;
-  static const int maxReconnectAttempts = 5;
-  static const Duration heartbeatInterval = Duration(seconds: 10);
-  static const Duration reconnectDelay = Duration(seconds: 3);
+  // Variables de reconexión ELIMINADAS para evitar warnings de código muerto
+  // ya que desactivamos el heartbeat loop.
 
   String? get sessionId => _sessionId;
   SessionStatus get sessionStatus => _sessionStatus;
@@ -88,9 +85,7 @@ class SessionManager extends ChangeNotifier {
 
       _sessionId = response['session_id'];
       _sessionStatus = SessionStatus.active;
-      _reconnectAttempts = 0;
-
-      _startHeartbeatLoop();
+      // _reconnectAttempts = 0; // Eliminado
 
       debugPrint('[SessionManager] Sesion creada: $_sessionId');
       notifyListeners();
@@ -120,7 +115,6 @@ class SessionManager extends ChangeNotifier {
         await resumeSession();
       } else {
         _sessionStatus = SessionStatus.active;
-        _startHeartbeatLoop();
       }
 
       final currentActivityData = response['current_activity'];
@@ -324,7 +318,6 @@ class SessionManager extends ChangeNotifier {
 
       await network.pauseSession(_sessionId!);
       _sessionStatus = SessionStatus.paused;
-      _stopHeartbeatLoop();
 
       debugPrint('[SessionManager] Sesion pausada');
       notifyListeners();
@@ -343,7 +336,6 @@ class SessionManager extends ChangeNotifier {
 
       await network.resumeSession(_sessionId!);
       _sessionStatus = SessionStatus.active;
-      _startHeartbeatLoop();
 
       debugPrint('[SessionManager] Sesion reanudada');
       notifyListeners();
@@ -366,7 +358,6 @@ class SessionManager extends ChangeNotifier {
 
       await network.finalizeSession(_sessionId!);
       _sessionStatus = SessionStatus.finalized;
-      _stopHeartbeatLoop();
 
       final finalizedSessionId = _sessionId;
       _sessionId = null;
@@ -382,72 +373,9 @@ class SessionManager extends ChangeNotifier {
     }
   }
 
-  void _startHeartbeatLoop() {
-    _stopHeartbeatLoop();
-
-    _heartbeatTimer = Timer.periodic(heartbeatInterval, (_) async {
-      await _sendHeartbeat();
-    });
-
-    debugPrint('[SessionManager] Heartbeat loop iniciado');
-  }
-
-  void _stopHeartbeatLoop() {
-    _heartbeatTimer?.cancel();
-    _heartbeatTimer = null;
-    debugPrint('[SessionManager] Heartbeat loop detenido');
-  }
-
-  Future<void> _sendHeartbeat() async {
-    if (_sessionId == null || _sessionStatus != SessionStatus.active) return;
-
-    try {
-      await network.sendHeartbeat(_sessionId!);
-      _reconnectAttempts = 0;
-    } catch (e) {
-      debugPrint('[SessionManager] Error en heartbeat: $e');
-      await _handleConnectionError();
-    }
-  }
-
-  Future<void> _handleConnectionError() async {
-    if (_isReconnecting) return;
-
-    _isReconnecting = true;
-    _reconnectAttempts++;
-
-    if (_reconnectAttempts >= maxReconnectAttempts) {
-      debugPrint('[SessionManager] Max intentos de reconexion alcanzados');
-      _sessionStatus = SessionStatus.pausedAutomatically;
-      _stopHeartbeatLoop();
-      notifyListeners();
-      _isReconnecting = false;
-      return;
-    }
-
-    debugPrint(
-        '[SessionManager] Intento de reconexion $_reconnectAttempts/$maxReconnectAttempts');
-
-    await Future.delayed(reconnectDelay * _reconnectAttempts);
-
-    try {
-      if (_sessionId != null) {
-        final response = await network.getSession(_sessionId!);
-        if (response['status'] == 'activa') {
-          _reconnectAttempts = 0;
-          debugPrint('[SessionManager] Reconexion exitosa');
-        }
-      }
-    } catch (e) {
-      debugPrint('[SessionManager] Reconexion fallida: $e');
-    }
-
-    _isReconnecting = false;
-  }
-
   @override
   void dispose() {
-    _stopHeartbeatLoop();
+    _heartbeatTimer?.cancel();
     super.dispose();
   }
 }

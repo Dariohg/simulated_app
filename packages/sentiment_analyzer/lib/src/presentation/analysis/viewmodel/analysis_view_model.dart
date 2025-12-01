@@ -27,6 +27,8 @@ class AnalysisViewModel extends ChangeNotifier {
   bool _isInitialized = false;
   CombinedState? _lastState;
   bool _isProcessing = false;
+
+  // Variable de estado de pausa
   bool _isPaused = false;
 
   EmotionResult? _lastEmotionResult;
@@ -34,9 +36,13 @@ class AnalysisViewModel extends ChangeNotifier {
   DateTime _lastProcessTime = DateTime.now();
   final Duration _processInterval = const Duration(milliseconds: 200);
 
+  // Getters
   bool get isInitialized => _isInitialized;
   CombinedState? get currentState => _lastState;
   CameraController? get cameraController => _cameraService.controller;
+
+  // GETTER AGREGADO: Soluciona el error "undefined_getter"
+  bool get isPaused => _isPaused;
 
   StreamSubscription<bool>? _cameraReadySubscription;
 

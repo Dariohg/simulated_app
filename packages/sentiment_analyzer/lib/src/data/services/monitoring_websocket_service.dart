@@ -37,6 +37,8 @@ class MonitoringWebSocketService extends ChangeNotifier {
   static const Duration pingInterval = Duration(seconds: 30);
   static const Duration handshakeTimeout = Duration(seconds: 10);
 
+  bool _isPaused = false;
+
   final StreamController<Recommendation> _recommendationController =
   StreamController<Recommendation>.broadcast();
 
@@ -47,6 +49,7 @@ class MonitoringWebSocketService extends ChangeNotifier {
           _status == WebSocketStatus.handshaking;
   Stream<Recommendation> get recommendations => _recommendationController.stream;
   String? get currentActivityUuid => _currentActivityUuid;
+  bool get isPaused => _isPaused;
 
   MonitoringWebSocketService({
     required this.gatewayUrl,
@@ -112,6 +115,22 @@ class MonitoringWebSocketService extends ChangeNotifier {
       _status = WebSocketStatus.error;
       notifyListeners();
       return false;
+    }
+  }
+
+  void pauseTransmission() {
+    if (!_isPaused) {
+      _isPaused = true;
+      debugPrint('[MonitoringWS] Transmisión pausada');
+      notifyListeners();
+    }
+  }
+
+  void resumeTransmission() {
+    if (_isPaused) {
+      _isPaused = false;
+      debugPrint('[MonitoringWS] Transmisión reanudada');
+      notifyListeners();
     }
   }
 
@@ -282,7 +301,7 @@ class MonitoringWebSocketService extends ChangeNotifier {
   }
 
   void sendFrame(Map<String, dynamic> frameData) {
-    if (_status != WebSocketStatus.ready) {
+    if (_status != WebSocketStatus.ready || _isPaused) {
       return;
     }
 

@@ -18,9 +18,11 @@ class SentimentAnalysisManager extends StatefulWidget {
   final int externalActivityId;
   final CalibrationResult? calibration;
   final void Function(CombinedState state)? onStateChanged;
+  final Function(bool isConnected)? onConnectionStatusChanged;
 
   final String gatewayUrl;
   final String apiKey;
+  final bool isPaused;
 
   final VoidCallback? onVibrateRequested;
   final Function(String message)? onInstructionReceived;
@@ -34,8 +36,10 @@ class SentimentAnalysisManager extends StatefulWidget {
     required this.externalActivityId,
     this.calibration,
     this.onStateChanged,
+    this.onConnectionStatusChanged,
     required this.gatewayUrl,
     required this.apiKey,
+    this.isPaused = false,
     this.onVibrateRequested,
     this.onInstructionReceived,
     this.onPauseReceived,
@@ -68,6 +72,8 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager>
       apiKey: widget.apiKey,
     );
 
+    _monitoringWs.addListener(_onWsStatusChanged);
+
     _viewModel = AnalysisViewModel(
       cameraService: CameraService(),
       faceMeshService: FaceMeshService(),
@@ -77,8 +83,34 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager>
       _viewModel.applyCalibration(widget.calibration!);
     }
 
+    if (widget.isPaused) {
+      _monitoringWs.pauseTransmission();
+    }
+
     _connectMonitoringWebSocket();
     _setupRecommendationListener();
+  }
+
+  void _onWsStatusChanged() {
+    if (widget.onConnectionStatusChanged != null) {
+      widget.onConnectionStatusChanged!(_monitoringWs.isConnected);
+    }
+  }
+
+  @override
+  void didUpdateWidget(SentimentAnalysisManager oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isPaused != oldWidget.isPaused) {
+      if (widget.isPaused) {
+        _stopFrameTransmission();
+        _monitoringWs.pauseTransmission();
+      } else {
+        if (!_viewModel.isPaused) {
+          _startFrameTransmission();
+          _monitoringWs.resumeTransmission();
+        }
+      }
+    }
   }
 
   Future<void> _connectMonitoringWebSocket() async {
@@ -102,10 +134,10 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager>
       externalActivityId: widget.externalActivityId,
     );
 
-    if (connected) {
+    if (connected && !widget.isPaused) {
       _startFrameTransmission();
     } else {
-      debugPrint('[SentimentManager] Fallo la conexion WebSocket');
+      debugPrint('[SentimentManager] Fallo la conexion WebSocket o esta pausado');
     }
   }
 
@@ -161,6 +193,7 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager>
   void _sendCurrentFrame() {
     if (!_monitoringWs.isConnected) return;
     if (_viewModel.currentState == null) return;
+    if (widget.isPaused) return;
 
     final frameData = _viewModel.currentState!.toJson();
     _monitoringWs.sendFrame(frameData);
@@ -195,9 +228,9 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager>
     debugPrint('[SentimentManager] App reanudada');
     _viewModel.setPaused(false);
 
-    if (_monitoringWs.isConnected) {
+    if (_monitoringWs.isConnected && !widget.isPaused) {
       _startFrameTransmission();
-    } else {
+    } else if (!widget.isPaused) {
       _connectMonitoringWebSocket();
     }
   }
@@ -205,6 +238,7 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _monitoringWs.removeListener(_onWsStatusChanged);
     _stopFrameTransmission();
     _recommendationSubscription?.cancel();
     _monitoringWs.dispose();

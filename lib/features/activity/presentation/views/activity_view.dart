@@ -4,6 +4,7 @@ import 'package:sentiment_analyzer/sentiment_analyzer.dart';
 import '../../../../core/mocks/mock_activities.dart';
 import '../../../../core/config/env_config.dart';
 import '../../../session_summary/presentation/views/session_summary_view.dart';
+import '../../../config/presentation/views/session_config_view.dart';
 
 class ActivityView extends StatefulWidget {
   final SessionManager sessionManager;
@@ -24,6 +25,8 @@ class _ActivityViewState extends State<ActivityView> {
   String? _error;
   String? _instructionMessage;
   bool _showPauseDialog = false;
+  bool _isSettingsOpen = false;
+  bool _isConnected = false;
 
   @override
   void initState() {
@@ -110,6 +113,28 @@ class _ActivityViewState extends State<ActivityView> {
     );
   }
 
+  void _openSettings() async {
+    setState(() {
+      _isSettingsOpen = true;
+    });
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SessionConfigView(
+          sessionId: widget.sessionManager.sessionId!,
+          networkService: widget.sessionManager.network,
+        ),
+      ),
+    );
+
+    if (mounted) {
+      setState(() {
+        _isSettingsOpen = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isInitializing) {
@@ -144,10 +169,16 @@ class _ActivityViewState extends State<ActivityView> {
             externalActivityId: widget.activityOption.externalActivityId,
             gatewayUrl: EnvConfig.apiGatewayUrl,
             apiKey: EnvConfig.apiToken,
+            isPaused: _showPauseDialog || _isSettingsOpen,
             onVibrateRequested: _handleVibration,
             onInstructionReceived: _handleInstruction,
             onPauseReceived: _handlePause,
             onVideoReceived: _handleVideo,
+            onConnectionStatusChanged: (connected) {
+              if (mounted && _isConnected != connected) {
+                setState(() => _isConnected = connected);
+              }
+            },
             onStateChanged: (state) {
               debugPrint('[ActivityView] Estado: ${state.finalState}');
             },
@@ -208,6 +239,20 @@ class _ActivityViewState extends State<ActivityView> {
                   ),
               ],
             ),
+          ),
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: _isConnected ? Colors.green : Colors.red,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.settings, color: Colors.white),
+            onPressed: _openSettings,
           ),
           IconButton(
             icon: const Icon(Icons.close, color: Colors.white),
