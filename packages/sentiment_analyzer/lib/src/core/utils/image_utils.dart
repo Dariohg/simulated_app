@@ -45,9 +45,9 @@ class ImageUtils {
       ) {
     try {
       img.Image? image = img.decodeImage(bytes);
-      if (image == null) {
-        image = _convertYUV420ToImage(bytes, width, height);
-      }
+      // Usando asignación nula correcta
+      image ??= _convertYUV420ToImage(bytes, width, height);
+
       if (image == null) return null;
 
       switch (sensorOrientation) {

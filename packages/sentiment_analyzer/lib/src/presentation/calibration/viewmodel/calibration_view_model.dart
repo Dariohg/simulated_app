@@ -1,8 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'dart:ui';
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart' hide debugPrint;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_mesh_detection/google_mlkit_face_mesh_detection.dart';
 

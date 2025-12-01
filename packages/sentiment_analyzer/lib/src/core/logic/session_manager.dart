@@ -39,8 +39,6 @@ class ActivityInfo {
   });
 }
 
-typedef BiometricDataProvider = Map<String, dynamic> Function();
-
 class SessionManager extends ChangeNotifier {
   final SentimentNetworkInterface network;
   final int userId;
@@ -53,7 +51,6 @@ class SessionManager extends ChangeNotifier {
   ActivityInfo? _currentActivity;
 
   Timer? _heartbeatTimer;
-  BiometricDataProvider? _dataProvider;
 
   bool _isReconnecting = false;
   int _reconnectAttempts = 0;
@@ -78,10 +75,6 @@ class SessionManager extends ChangeNotifier {
     this.disabilityType = 'none',
     this.cognitiveAnalysisEnabled = true,
   });
-
-  void setDataProvider(BiometricDataProvider provider) {
-    _dataProvider = provider;
-  }
 
   Future<bool> initializeSession() async {
     try {

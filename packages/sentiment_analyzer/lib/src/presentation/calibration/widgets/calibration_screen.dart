@@ -199,7 +199,8 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.7),
+        // CORREGIDO: withValues
+        color: Colors.black.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(30),
       ),
       child: Column(
@@ -285,7 +286,8 @@ class _FaceGuidePainter extends CustomPainter {
       height: size.width * 0.85,
     );
     final paint = Paint()
-      ..color = _getColor().withOpacity(0.5)
+    // CORREGIDO: withValues
+      ..color = _getColor().withValues(alpha: 0.5)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;
     canvas.drawOval(rect, paint);

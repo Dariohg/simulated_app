@@ -49,7 +49,7 @@ class AnalysisOverlay extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: _getBorderColor(viewModel.currentState).withOpacity(0.9),
+                  color: _getBorderColor(viewModel.currentState).withValues(alpha: 0.9),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
@@ -115,9 +115,9 @@ class AnalysisOverlay extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       constraints: const BoxConstraints(maxWidth: 150),
       decoration: BoxDecoration(
-        color: AppColors.background.withOpacity(0.8),
+        color: AppColors.background.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: statusColor.withOpacity(0.6), width: 1.5),
+        border: Border.all(color: statusColor.withValues(alpha: 0.6), width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

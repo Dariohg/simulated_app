@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:sentiment_analyzer/sentiment_analyzer.dart';
 import '../config/env_config.dart';
 
@@ -23,7 +24,7 @@ class AppNetworkService implements SentimentNetworkInterface {
     _dio.interceptors.add(LogInterceptor(
       requestBody: true,
       responseBody: true,
-      logPrint: (obj) => print('[DIO] $obj'),
+      logPrint: (obj) => debugPrint('[DIO] $obj'),
     ));
   }
 

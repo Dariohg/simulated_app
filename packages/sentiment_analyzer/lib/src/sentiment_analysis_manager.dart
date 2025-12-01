@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 
 import 'presentation/analysis/viewmodel/analysis_view_model.dart';
 import 'presentation/analysis/widgets/analysis_overlay.dart';

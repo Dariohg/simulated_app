@@ -1,5 +1,5 @@
-import 'dart:typed_data';
 import 'dart:math';
+import 'package:flutter/foundation.dart'; // Necesario para debugPrint
 import 'package:tflite_flutter/tflite_flutter.dart';
 
 class EmotionService {
@@ -24,7 +24,7 @@ class EmotionService {
       );
       _isModelLoaded = true;
     } catch (e) {
-      print('[EmotionService] Error cargando modelo: $e');
+      debugPrint('[EmotionService] Error cargando modelo: $e');
       _isModelLoaded = false;
     }
   }
@@ -58,7 +58,7 @@ class EmotionService {
         return rawOutput;
       }
     } catch (e) {
-      print('[EmotionService] Error en inferencia: $e');
+      debugPrint('[EmotionService] Error en inferencia: $e');
       return [];
     } finally {
       _isBusy = false;

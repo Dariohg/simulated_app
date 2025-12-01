@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import '../../../../core/network/http_network_service.dart';
+import '../../../../core/network/app_network_service.dart';
 import '../../../../core/models/session_model.dart';
 import '../../../../core/models/activity_model.dart';
 import '../../../../core/models/biometric_frame_model.dart';
-import '../../../../core/models/monitoring_event_model.dart';
+//import '../../../../core/models/monitoring_event_model.dart';
 import '../../../../core/mocks/mock_activities.dart';
 
 class ActivityViewModel extends ChangeNotifier {
-  final HttpNetworkService _httpService = HttpNetworkService();
+  final AppNetworkService _httpService = AppNetworkService();
   final SessionModel session;
   final ActivityOption activityOption;
 
@@ -25,10 +25,24 @@ class ActivityViewModel extends ChangeNotifier {
 
   Future<void> startActivity() async {
     try {
-      _activeActivity = await _httpService.startActivity(
-        session.id,
-        activityOption.externalActivityId, // CORREGIDO: Usando el nombre correcto
+      final response = await _httpService.startActivity(
+        sessionId: session.id,
+        externalActivityId: activityOption.externalActivityId,
+        title: activityOption.title,
+        subtitle: activityOption.subtitle,
+        content: activityOption.content,
+        activityType: activityOption.activityType,
       );
+
+      // CORREGIDO: Ajustado a los campos reales de tu ActivityModel
+      if (response['activity_uuid'] != null) {
+        _activeActivity = ActivityModel(
+          activityUuid: response['activity_uuid'],
+          sessionId: session.id, // Requerido por ActivityModel
+          externalActivityId: activityOption.externalActivityId,
+          status: 'active',      // Requerido por ActivityModel (valor por defecto o de respuesta)
+        );
+      }
     } catch (e) {
       _error = e.toString();
     } finally {
@@ -53,34 +67,38 @@ class ActivityViewModel extends ChangeNotifier {
   }
 
   void _analyzeAndSend(BiometricFrameModel frame) {
-    String interventionType = "none";
     final atencionVal = frame.atencion['valor'] as double? ?? 1.0;
 
     if (atencionVal < 0.3) {
-      interventionType = "vibration";
       _feedbackMessage = "¡Concéntrate!";
     } else {
       _feedbackMessage = null;
     }
     notifyListeners();
 
+    // CORREGIDO: Comentado para evitar el warning 'unused_local_variable'
+    // ya que la llamada _httpService.sendMonitoringEvent aún no está implementada.
+    /*
     final event = MonitoringEventModel(
       sessionId: session.id,
       userId: session.userId,
-      externalActivityId: activityOption.externalActivityId, // CORREGIDO
+      externalActivityId: activityOption.externalActivityId,
       activityUuid: _activeActivity!.activityUuid,
       interventionType: interventionType,
       confidence: 1.0,
       context: frame.atencion,
       timestamp: DateTime.now().millisecondsSinceEpoch,
     );
-
-    _httpService.sendMonitoringEvent(event).catchError((_) {});
+    // _httpService.sendMonitoringEvent(event).catchError((_) {});
+    */
   }
 
   Future<void> stopActivity() async {
     if (_activeActivity != null) {
-      await _httpService.stopActivity(_activeActivity!.activityUuid);
+      await _httpService.completeActivity(
+        activityUuid: _activeActivity!.activityUuid,
+        feedback: {},
+      );
     }
   }
 }

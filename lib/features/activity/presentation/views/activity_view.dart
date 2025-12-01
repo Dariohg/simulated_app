@@ -68,8 +68,8 @@ class _ActivityViewState extends State<ActivityView> {
   }
 
   void _handleVibration() async {
-    final hasVibrator = await Vibration.hasVibrator() ?? false;
-    if (hasVibrator) {
+    final hasVibrator = await Vibration.hasVibrator();
+    if (hasVibrator == true) {
       Vibration.vibrate(duration: 500);
     }
   }
@@ -149,7 +149,7 @@ class _ActivityViewState extends State<ActivityView> {
             onPauseReceived: _handlePause,
             onVideoReceived: _handleVideo,
             onStateChanged: (state) {
-              print('[ActivityView] Estado: ${state.finalState}');
+              debugPrint('[ActivityView] Estado: ${state.finalState}');
             },
           ),
           Positioned(
@@ -222,7 +222,7 @@ class _ActivityViewState extends State<ActivityView> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.blue.withOpacity(0.9),
+        color: Colors.blue.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(

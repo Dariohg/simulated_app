@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart'; // Necesario para debugPrint
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/calibration_result.dart';
 
@@ -61,8 +62,4 @@ class CalibrationStorage {
     await prefs.remove(_keyPitch);
     await prefs.remove(_keyYaw);
   }
-}
-
-void debugPrint(String message) {
-  print(message);
 }
