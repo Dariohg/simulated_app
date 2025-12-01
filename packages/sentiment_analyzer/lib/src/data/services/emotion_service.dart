@@ -1,9 +1,8 @@
 import 'dart:math';
-import 'package:flutter/foundation.dart'; // Necesario para debugPrint
+import 'package:flutter/foundation.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 
 class EmotionService {
-  // Singleton para asegurar una sola instancia del intérprete
   static final EmotionService _instance = EmotionService._internal();
   factory EmotionService() => _instance;
   EmotionService._internal();
@@ -35,28 +34,24 @@ class EmotionService {
 
     _isBusy = true;
     try {
-      // El modelo espera [1, 224, 224, 3] = 150528 valores
+      // El modelo espera 224x224x3 = 150528 floats
       if (input.length != 150528) {
+        debugPrint('[EmotionService] Tamaño de entrada incorrecto: ${input.length}');
         return [];
       }
 
-      // Salida: [1, 8] (8 emociones)
+      // Buffer de salida: [1, 8]
       var outputBuffer = List.filled(1 * 8, 0.0).reshape([1, 8]);
 
-      // Entrada redimensionada
+      // Reshape de entrada
       var inputBuffer = input.reshape([1, 224, 224, 3]);
 
       _interpreter!.run(inputBuffer, outputBuffer);
 
       List<double> rawOutput = List<double>.from(outputBuffer[0]);
 
-      // Aplicar Softmax si los valores no están normalizados (suma != 1)
-      double sum = rawOutput.fold(0.0, (a, b) => a + b);
-      if (sum < 0.99 || sum > 1.01) {
-        return _softmax(rawOutput);
-      } else {
-        return rawOutput;
-      }
+      // Aplicar Softmax para obtener probabilidades limpias (0.0 a 1.0)
+      return _softmax(rawOutput);
     } catch (e) {
       debugPrint('[EmotionService] Error en inferencia: $e');
       return [];
@@ -68,9 +63,12 @@ class EmotionService {
   List<double> _softmax(List<double> logits) {
     if (logits.isEmpty) return [];
     double maxVal = logits.reduce(max);
+    // Calcular exponenciales restando el máximo para estabilidad numérica
     List<double> expVals = logits.map((x) => exp(x - maxVal)).toList();
     double sumExp = expVals.reduce((a, b) => a + b);
+
     if (sumExp == 0) return List.filled(logits.length, 1.0 / logits.length);
+
     return expVals.map((x) => x / sumExp).toList();
   }
 
