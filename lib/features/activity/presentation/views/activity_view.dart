@@ -26,6 +26,7 @@ class _ActivityViewState extends State<ActivityView> {
   bool _isSettingsOpen = false;
   bool _isConnected = false;
   CalibrationResult? _savedCalibration;
+  bool _isFinishing = false;
 
   @override
   void initState() {
@@ -67,16 +68,29 @@ class _ActivityViewState extends State<ActivityView> {
   }
 
   Future<void> _finishActivity() async {
+    if (_isFinishing) return;
+
+    setState(() {
+      _isFinishing = true;
+    });
+
     await widget.sessionManager.completeActivity(feedback: {
       'rating': 5,
       'completed': true,
     });
 
     if (mounted) {
-      Navigator.pushReplacement(
-        context,
+      Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const SessionSummaryView()),
+            (route) => false,
       );
+    }
+  }
+
+  Future<void> _closeActivity() async {
+    await widget.sessionManager.abandonActivity();
+    if (mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
     }
   }
 
@@ -142,7 +156,7 @@ class _ActivityViewState extends State<ActivityView> {
               Text('Error: $_error'),
               const SizedBox(height: 16),
               ElevatedButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
                 child: const Text('Volver'),
               ),
             ],
@@ -151,68 +165,75 @@ class _ActivityViewState extends State<ActivityView> {
       );
     }
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          Column(
-            children: [
-              _buildHeader(),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 100),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.activityOption.title,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 24,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      if (widget.activityOption.subtitle != null) ...[
-                        const SizedBox(height: 8),
+    return WillPopScope(
+      onWillPop: () async {
+        await _closeActivity();
+        return false;
+      },
+      child: Scaffold(
+        body: Stack(
+          children: [
+            Column(
+              children: [
+                _buildHeader(),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 100),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Text(
-                          widget.activityOption.subtitle!,
+                          widget.activityOption.title,
                           style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 24,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        if (widget.activityOption.subtitle != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            widget.activityOption.subtitle!,
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 24),
+                        Text(
+                          widget.activityOption.content ?? '',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            height: 1.5,
                           ),
                         ),
                       ],
-                      const SizedBox(height: 24),
-                      Text(
-                        widget.activityOption.content ?? '',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          height: 1.5,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
+              ],
+            ),
+            if (!_isFinishing)
+              SentimentAnalysisManager(
+                sessionManager: widget.sessionManager,
+                externalActivityId: widget.activityOption.externalActivityId.toString(),
+                gatewayUrl: EnvConfig.apiGatewayUrl,
+                apiKey: EnvConfig.apiToken,
+                calibration: _savedCalibration,
+                isPaused: _isSettingsOpen,
+                onVibrateRequested: _handleVibration,
+                onVideoReceived: _handleVideo,
+                onSettingsRequested: _openSettings,
+                onConnectionStatusChanged: (connected) {
+                  if (mounted && _isConnected != connected) {
+                    setState(() => _isConnected = connected);
+                  }
+                },
+                onStateChanged: (state) {},
               ),
-            ],
-          ),
-          SentimentAnalysisManager(
-            sessionManager: widget.sessionManager,
-            externalActivityId: widget.activityOption.externalActivityId.toString(),
-            gatewayUrl: EnvConfig.apiGatewayUrl,
-            apiKey: EnvConfig.apiToken,
-            calibration: _savedCalibration,
-            isPaused: _isSettingsOpen,
-            onVibrateRequested: _handleVibration,
-            onVideoReceived: _handleVideo,
-            onSettingsRequested: _openSettings,
-            onConnectionStatusChanged: (connected) {
-              if (mounted && _isConnected != connected) {
-                setState(() => _isConnected = connected);
-              }
-            },
-            onStateChanged: (state) {},
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -238,7 +259,7 @@ class _ActivityViewState extends State<ActivityView> {
           ),
           const Spacer(),
           ElevatedButton.icon(
-            onPressed: _finishActivity,
+            onPressed: _isFinishing ? null : _finishActivity,
             icon: const Icon(Icons.check, size: 18),
             label: const Text('Finalizar'),
             style: ElevatedButton.styleFrom(
@@ -249,7 +270,7 @@ class _ActivityViewState extends State<ActivityView> {
           ),
           const SizedBox(width: 8),
           IconButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: _isFinishing ? null : _closeActivity,
             icon: const Icon(Icons.close),
             style: IconButton.styleFrom(
               backgroundColor: Colors.grey[200],

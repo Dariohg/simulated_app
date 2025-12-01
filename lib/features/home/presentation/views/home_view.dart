@@ -4,7 +4,9 @@ import '../../../../core/mocks/mock_user.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../calibration/presentation/views/calibration_view.dart';
+import '../../../activity/presentation/views/activity_view.dart';
 import '../viewmodels/home_view_model.dart';
+import 'package:sentiment_analyzer/sentiment_analyzer.dart';
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -15,6 +17,7 @@ class HomeView extends StatefulWidget {
 
 class _HomeViewState extends State<HomeView> {
   final HomeViewModel _viewModel = HomeViewModel();
+  final CalibrationStorage _calibrationStorage = CalibrationStorage();
 
   @override
   void initState() {
@@ -22,18 +25,34 @@ class _HomeViewState extends State<HomeView> {
     _viewModel.initializeSession();
   }
 
-  void _onActivitySelected(ActivityOption activity) {
+  Future<void> _onActivitySelected(ActivityOption activity) async {
     if (_viewModel.sessionManager == null) return;
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => CalibrationView(
-          sessionManager: _viewModel.sessionManager!,
-          activityOption: activity,
-        ),
-      ),
-    );
+    final savedCalibration = await _calibrationStorage.load();
+
+    if (mounted) {
+      if (savedCalibration != null && savedCalibration.isSuccessful) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ActivityView(
+              sessionManager: _viewModel.sessionManager!,
+              activityOption: activity,
+            ),
+          ),
+        );
+      } else {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => CalibrationView(
+              sessionManager: _viewModel.sessionManager!,
+              activityOption: activity,
+            ),
+          ),
+        );
+      }
+    }
   }
 
   @override

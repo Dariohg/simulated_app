@@ -27,21 +27,17 @@ class AnalysisViewModel extends ChangeNotifier {
   bool _isInitialized = false;
   CombinedState? _lastState;
   bool _isProcessing = false;
-
-  // Variable de estado de pausa
   bool _isPaused = false;
+  bool _isDisposed = false;
 
   EmotionResult? _lastEmotionResult;
 
   DateTime _lastProcessTime = DateTime.now();
   final Duration _processInterval = const Duration(milliseconds: 200);
 
-  // Getters
   bool get isInitialized => _isInitialized;
   CombinedState? get currentState => _lastState;
   CameraController? get cameraController => _cameraService.controller;
-
-  // GETTER AGREGADO: Soluciona el error "undefined_getter"
   bool get isPaused => _isPaused;
 
   StreamSubscription<bool>? _cameraReadySubscription;
@@ -73,9 +69,11 @@ class AnalysisViewModel extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    if (_isDisposed) return;
+
     await _emotionService.loadModel();
     _cameraReadySubscription = _cameraService.onCameraReady.listen((isReady) {
-      if (isReady) {
+      if (isReady && !_isDisposed) {
         _isInitialized = true;
         _cameraService.startImageStream(_processFrame);
         notifyListeners();
@@ -85,7 +83,7 @@ class AnalysisViewModel extends ChangeNotifier {
   }
 
   void _processFrame(CameraImage image) async {
-    if (_isPaused) return;
+    if (_isPaused || _isDisposed) return;
     if (_isProcessing) return;
     if (DateTime.now().difference(_lastProcessTime) < _processInterval) return;
 
@@ -100,7 +98,9 @@ class AnalysisViewModel extends ChangeNotifier {
 
       if (meshes.isEmpty) {
         _lastState = _stateAggregator.aggregate(faceDetected: false);
-        notifyListeners();
+        if (!_isDisposed) {
+          notifyListeners();
+        }
         return;
       }
 
@@ -154,7 +154,9 @@ class AnalysisViewModel extends ChangeNotifier {
         isCalibrating: !_attentionAnalyzer.isCalibrated,
       );
 
-      notifyListeners();
+      if (!_isDisposed) {
+        notifyListeners();
+      }
 
     } catch (e) {
       debugPrint("$e");
@@ -199,11 +201,16 @@ class AnalysisViewModel extends ChangeNotifier {
   }
 
   @override
-  void dispose() {
-    _cameraReadySubscription?.cancel();
-    _cameraService.dispose();
+  void dispose() async {
+    _isDisposed = true;
+
+    await _cameraReadySubscription?.cancel();
+    _cameraReadySubscription = null;
+
+    await _cameraService.dispose();
     _faceMeshService.dispose();
     _emotionService.dispose();
+
     super.dispose();
   }
 }

@@ -18,7 +18,10 @@ class MainApp extends StatelessWidget {
       title: 'Monitoring App',
       theme: AppTheme.lightTheme,
       debugShowCheckedModeBanner: false,
-      home: const HomeView(),
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const HomeView(),
+      },
     );
   }
 }

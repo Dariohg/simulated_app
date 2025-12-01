@@ -13,7 +13,11 @@ class CameraService {
   StreamController.broadcast();
   Stream<bool> get onCameraReady => _cameraReadyController.stream;
 
+  bool _isDisposed = false;
+
   Future<void> initializeCamera() async {
+    if (_isDisposed) return;
+
     try {
       final cameras = await availableCameras();
 
@@ -38,10 +42,15 @@ class CameraService {
       );
 
       await _controller!.initialize();
-      _cameraReadyController.add(true);
+
+      if (!_isDisposed) {
+        _cameraReadyController.add(true);
+      }
     } catch (e) {
       debugPrint('[CameraService] ERROR inicializando camara: $e');
-      _cameraReadyController.add(false);
+      if (!_isDisposed) {
+        _cameraReadyController.add(false);
+      }
     }
   }
 
@@ -66,9 +75,25 @@ class CameraService {
     }
   }
 
-  void dispose() {
-    stopImageStream();
-    _controller?.dispose();
-    _cameraReadyController.close();
+  Future<void> dispose() async {
+    _isDisposed = true;
+
+    await stopImageStreamAsync();
+
+    await _controller?.dispose();
+    _controller = null;
+
+    await _cameraReadyController.close();
+  }
+
+  Future<void> stopImageStreamAsync() async {
+    if (_controller?.value.isStreamingImages == true) {
+      try {
+        await _controller?.stopImageStream();
+        await Future.delayed(const Duration(milliseconds: 100));
+      } catch (e) {
+        debugPrint('[CameraService] Error deteniendo stream: $e');
+      }
+    }
   }
 }
