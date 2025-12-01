@@ -73,12 +73,10 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
   Widget _buildFullScreenCamera(
       BuildContext context, CameraController controller) {
     final size = MediaQuery.of(context).size;
-    final deviceRatio = size.width / size.height;
-    if (!controller.value.isInitialized) return Container();
-    final previewSize = controller.value.previewSize!;
-    final sensorRatio = previewSize.height / previewSize.width;
-    double scale =
-    (deviceRatio < sensorRatio) ? deviceRatio / sensorRatio : sensorRatio / deviceRatio;
+    var scale = size.aspectRatio * controller.value.aspectRatio;
+
+    if (scale < 1) scale = 1 / scale;
+
     return Transform.scale(
       scale: scale,
       child: Center(child: CameraPreview(controller)),
@@ -199,7 +197,6 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(
-        // CORREGIDO: withValues
         color: Colors.black.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(30),
       ),
@@ -286,7 +283,6 @@ class _FaceGuidePainter extends CustomPainter {
       height: size.width * 0.85,
     );
     final paint = Paint()
-    // CORREGIDO: withValues
       ..color = _getColor().withValues(alpha: 0.5)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3;

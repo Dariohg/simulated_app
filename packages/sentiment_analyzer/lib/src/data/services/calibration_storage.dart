@@ -1,65 +1,50 @@
-import 'package:flutter/foundation.dart'; // Necesario para debugPrint
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/calibration_result.dart';
 
 class CalibrationStorage {
-  static const String _keyIsSuccessful = 'calibration_success';
-  static const String _keyEarThreshold = 'calibration_ear_threshold';
-  static const String _keyPitch = 'calibration_pitch';
-  static const String _keyYaw = 'calibration_yaw';
+  // Usamos una clave nueva para evitar conflictos con versiones viejas
+  static const String _keyCalibration = 'calibration_data_v2';
 
   Future<void> save(CalibrationResult result) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-
-      await prefs.setBool(_keyIsSuccessful, result.isSuccessful);
-
-      if (result.earThreshold != null) {
-        await prefs.setDouble(_keyEarThreshold, result.earThreshold!);
-      }
-
-      if (result.baselinePitch != null) {
-        await prefs.setDouble(_keyPitch, result.baselinePitch!);
-      }
-
-      if (result.baselineYaw != null) {
-        await prefs.setDouble(_keyYaw, result.baselineYaw!);
-      }
+      // Guardamos todo el objeto como JSON string
+      final jsonString = jsonEncode(result.toJson());
+      await prefs.setString(_keyCalibration, jsonString);
+      debugPrint('[CalibrationStorage] Calibracion guardada OK');
     } catch (e) {
-      debugPrint('[CalibrationStorage] Error guardando calibracion: $e');
+      debugPrint('[CalibrationStorage] Error guardando: $e');
     }
   }
 
   Future<CalibrationResult?> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final jsonString = prefs.getString(_keyCalibration);
 
-      if (!prefs.containsKey(_keyIsSuccessful)) {
+      if (jsonString == null) {
+        debugPrint('[CalibrationStorage] No hay calibracion guardada');
         return null;
       }
 
-      final isSuccessful = prefs.getBool(_keyIsSuccessful) ?? false;
-      final earThreshold = prefs.getDouble(_keyEarThreshold);
-      final pitch = prefs.getDouble(_keyPitch);
-      final yaw = prefs.getDouble(_keyYaw);
+      final jsonMap = jsonDecode(jsonString);
+      final result = CalibrationResult.fromJson(jsonMap);
 
-      return CalibrationResult(
-        isSuccessful: isSuccessful,
-        earThreshold: earThreshold,
-        baselinePitch: pitch,
-        baselineYaw: yaw,
-      );
+      if (!result.isSuccessful) {
+        return null;
+      }
+
+      return result;
     } catch (e) {
-      debugPrint('[CalibrationStorage] Error cargando calibracion: $e');
+      debugPrint('[CalibrationStorage] Error cargando: $e');
       return null;
     }
   }
 
   Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_keyIsSuccessful);
-    await prefs.remove(_keyEarThreshold);
-    await prefs.remove(_keyPitch);
-    await prefs.remove(_keyYaw);
+    await prefs.remove(_keyCalibration);
   }
 }

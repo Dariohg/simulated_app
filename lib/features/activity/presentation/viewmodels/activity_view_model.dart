@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:sentiment_analyzer/sentiment_analyzer.dart';
 import '../../../../core/network/app_network_service.dart';
 import '../../../../core/models/session_model.dart';
 import '../../../../core/models/activity_model.dart';
 import '../../../../core/models/biometric_frame_model.dart';
-//import '../../../../core/models/monitoring_event_model.dart';
 import '../../../../core/mocks/mock_activities.dart';
 
 class ActivityViewModel extends ChangeNotifier {
   final AppNetworkService _httpService = AppNetworkService();
   final SessionModel session;
   final ActivityOption activityOption;
+  final CalibrationStorage _calibrationStorage = CalibrationStorage();
 
   ActivityModel? _activeActivity;
   bool _isInitializing = true;
@@ -21,7 +22,40 @@ class ActivityViewModel extends ChangeNotifier {
   String? _feedbackMessage;
   String? get feedbackMessage => _feedbackMessage;
 
+  CalibrationResult? _calibration;
+  CalibrationResult? get calibration => _calibration;
+
+  bool _needsCalibration = false;
+  bool get needsCalibration => _needsCalibration;
+
   ActivityViewModel({required this.session, required this.activityOption});
+
+  Future<void> initialize() async {
+    _isInitializing = true;
+    notifyListeners();
+    await _checkCalibration();
+    _isInitializing = false;
+    notifyListeners();
+  }
+
+  Future<void> _checkCalibration() async {
+    final savedCalibration = await _calibrationStorage.load();
+    if (savedCalibration != null && savedCalibration.isSuccessful) {
+      _calibration = savedCalibration;
+      _needsCalibration = false;
+      debugPrint('[ActivityViewModel] Calibracion encontrada. No se requiere recalibrar.');
+    } else {
+      _calibration = null;
+      _needsCalibration = true;
+      debugPrint('[ActivityViewModel] Calibracion NO encontrada o invalida. Se requiere calibrar.');
+    }
+  }
+
+  Future<void> onCalibrationCompleted() async {
+    debugPrint('[ActivityViewModel] Calibracion completada en UI. Verificando almacenamiento...');
+    await _checkCalibration();
+    notifyListeners();
+  }
 
   Future<void> startActivity() async {
     try {
@@ -34,19 +68,17 @@ class ActivityViewModel extends ChangeNotifier {
         activityType: activityOption.activityType,
       );
 
-      // CORREGIDO: Ajustado a los campos reales de tu ActivityModel
       if (response['activity_uuid'] != null) {
         _activeActivity = ActivityModel(
           activityUuid: response['activity_uuid'],
-          sessionId: session.id, // Requerido por ActivityModel
+          sessionId: session.id,
           externalActivityId: activityOption.externalActivityId,
-          status: 'active',      // Requerido por ActivityModel (valor por defecto o de respuesta)
+          status: 'active',
         );
       }
     } catch (e) {
       _error = e.toString();
     } finally {
-      _isInitializing = false;
       notifyListeners();
     }
   }
@@ -75,22 +107,6 @@ class ActivityViewModel extends ChangeNotifier {
       _feedbackMessage = null;
     }
     notifyListeners();
-
-    // CORREGIDO: Comentado para evitar el warning 'unused_local_variable'
-    // ya que la llamada _httpService.sendMonitoringEvent aún no está implementada.
-    /*
-    final event = MonitoringEventModel(
-      sessionId: session.id,
-      userId: session.userId,
-      externalActivityId: activityOption.externalActivityId,
-      activityUuid: _activeActivity!.activityUuid,
-      interventionType: interventionType,
-      confidence: 1.0,
-      context: frame.atencion,
-      timestamp: DateTime.now().millisecondsSinceEpoch,
-    );
-    // _httpService.sendMonitoringEvent(event).catchError((_) {});
-    */
   }
 
   Future<void> stopActivity() async {
