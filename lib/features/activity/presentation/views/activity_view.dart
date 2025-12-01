@@ -28,31 +28,45 @@ class _ActivityViewState extends State<ActivityView> {
   bool _isSettingsOpen = false;
   bool _isConnected = false;
 
+  CalibrationResult? _savedCalibration;
+
   @override
   void initState() {
     super.initState();
-    _startActivity();
+    _initializeActivityAndCalibration();
   }
 
-  Future<void> _startActivity() async {
+  Future<void> _initializeActivityAndCalibration() async {
     try {
-      final success = await widget.sessionManager.startActivity(
-        externalActivityId: widget.activityOption.externalActivityId,
-        title: widget.activityOption.title,
-        subtitle: widget.activityOption.subtitle,
-        content: widget.activityOption.content,
-        activityType: widget.activityOption.activityType,
-      );
+      final storage = CalibrationStorage();
 
-      if (!success) {
+      final results = await Future.wait([
+        widget.sessionManager.startActivity(
+          externalActivityId: widget.activityOption.externalActivityId,
+          title: widget.activityOption.title,
+          subtitle: widget.activityOption.subtitle,
+          content: widget.activityOption.content,
+          activityType: widget.activityOption.activityType,
+        ),
+        storage.load(),
+      ]);
+
+      final activitySuccess = results[0] as bool;
+      final calibrationData = results[1] as CalibrationResult?;
+
+      if (!activitySuccess) {
         _error = 'No se pudo iniciar la actividad';
+      } else {
+        _savedCalibration = calibrationData;
       }
     } catch (e) {
       _error = e.toString();
     } finally {
-      setState(() {
-        _isInitializing = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isInitializing = false;
+        });
+      }
     }
   }
 
@@ -169,6 +183,7 @@ class _ActivityViewState extends State<ActivityView> {
             externalActivityId: widget.activityOption.externalActivityId,
             gatewayUrl: EnvConfig.apiGatewayUrl,
             apiKey: EnvConfig.apiToken,
+            calibration: _savedCalibration,
             isPaused: _showPauseDialog || _isSettingsOpen,
             onVibrateRequested: _handleVibration,
             onInstructionReceived: _handleInstruction,

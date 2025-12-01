@@ -4,13 +4,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/calibration_result.dart';
 
 class CalibrationStorage {
-  // Usamos una clave nueva para evitar conflictos con versiones viejas
-  static const String _keyCalibration = 'calibration_data_v2';
+  static const String _keyCalibration = 'sentiment_calibration_data_v2';
 
   Future<void> save(CalibrationResult result) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      // Guardamos todo el objeto como JSON string
       final jsonString = jsonEncode(result.toJson());
       await prefs.setString(_keyCalibration, jsonString);
       debugPrint('[CalibrationStorage] Calibracion guardada OK');
@@ -25,7 +23,6 @@ class CalibrationStorage {
       final jsonString = prefs.getString(_keyCalibration);
 
       if (jsonString == null) {
-        debugPrint('[CalibrationStorage] No hay calibracion guardada');
         return null;
       }
 

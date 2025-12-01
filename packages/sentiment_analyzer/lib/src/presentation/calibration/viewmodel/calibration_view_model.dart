@@ -19,7 +19,7 @@ class CalibrationViewModel extends ChangeNotifier {
   bool _isInitialized = false;
   CalibrationProgress? _currentProgress;
   bool _isProcessing = false;
-  bool _isSaved = false; // Nueva bandera para controlar el guardado
+  bool _isSaved = false;
 
   StreamSubscription<bool>? _cameraReadySubscription;
   StreamSubscription<CalibrationProgress>? _progressSubscription;
@@ -33,10 +33,7 @@ class CalibrationViewModel extends ChangeNotifier {
         _calibrationService = calibrationService ?? CalibrationService();
 
   bool get isInitialized => _isInitialized;
-
-  // CRITICO: Solo decimos que esta calibrado si el servicio acabo Y ya guardamos
   bool get isCalibrated => _calibrationService.isCalibrated && _isSaved;
-
   CalibrationProgress? get currentProgress => _currentProgress;
   CameraController? get cameraController => _cameraService.controller;
   CalibrationStep get currentStep => _calibrationService.currentStep;
@@ -94,16 +91,14 @@ class CalibrationViewModel extends ChangeNotifier {
 
       _calibrationService.processFrame(points: points, brightness: brightness);
 
-      // Si el servicio dice que termino...
       if (_calibrationService.isCalibrated) {
         _cameraService.stopImageStream();
         HapticFeedback.mediumImpact();
 
-        // Esperamos a que se guarde REALMENTE en el disco
         if (_calibrationService.lastResult != null) {
           await _storage.save(_calibrationService.lastResult!);
-          _isSaved = true; // Marcamos como guardado
-          notifyListeners(); // Avisamos a la UI para que se cierre ahora si
+          _isSaved = true;
+          notifyListeners();
         }
       }
     } catch (e) {
