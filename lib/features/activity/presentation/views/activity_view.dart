@@ -23,11 +23,8 @@ class ActivityView extends StatefulWidget {
 class _ActivityViewState extends State<ActivityView> {
   bool _isInitializing = true;
   String? _error;
-  String? _instructionMessage;
-  bool _showPauseDialog = false;
   bool _isSettingsOpen = false;
   bool _isConnected = false;
-
   CalibrationResult? _savedCalibration;
 
   @override
@@ -39,7 +36,6 @@ class _ActivityViewState extends State<ActivityView> {
   Future<void> _initializeActivityAndCalibration() async {
     try {
       final storage = CalibrationStorage();
-
       final results = await Future.wait([
         widget.sessionManager.startActivity(
           externalActivityId: widget.activityOption.externalActivityId,
@@ -89,26 +85,6 @@ class _ActivityViewState extends State<ActivityView> {
     if (hasVibrator == true) {
       Vibration.vibrate(duration: 500);
     }
-  }
-
-  void _handleInstruction(String message) {
-    setState(() {
-      _instructionMessage = message;
-    });
-
-    Future.delayed(const Duration(seconds: 5), () {
-      if (mounted) {
-        setState(() {
-          _instructionMessage = null;
-        });
-      }
-    });
-  }
-
-  void _handlePause(String message) {
-    setState(() {
-      _showPauseDialog = true;
-    });
   }
 
   void _handleVideo(String url, String? title) {
@@ -178,46 +154,64 @@ class _ActivityViewState extends State<ActivityView> {
     return Scaffold(
       body: Stack(
         children: [
+          Column(
+            children: [
+              _buildHeader(),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 100),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.activityOption.title,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 24,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      if (widget.activityOption.subtitle != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          widget.activityOption.subtitle!,
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      Text(
+                        widget.activityOption.content ?? '',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
           SentimentAnalysisManager(
             sessionManager: widget.sessionManager,
-            externalActivityId: widget.activityOption.externalActivityId,
+            externalActivityId: widget.activityOption.externalActivityId.toString(),
             gatewayUrl: EnvConfig.apiGatewayUrl,
             apiKey: EnvConfig.apiToken,
             calibration: _savedCalibration,
-            isPaused: _showPauseDialog || _isSettingsOpen,
+            isPaused: _isSettingsOpen,
             onVibrateRequested: _handleVibration,
-            onInstructionReceived: _handleInstruction,
-            onPauseReceived: _handlePause,
             onVideoReceived: _handleVideo,
+            onSettingsRequested: _openSettings,
             onConnectionStatusChanged: (connected) {
               if (mounted && _isConnected != connected) {
                 setState(() => _isConnected = connected);
               }
             },
-            onStateChanged: (state) {
-              debugPrint('[ActivityView] Estado: ${state.finalState}');
-            },
+            onStateChanged: (state) {},
           ),
-          Positioned(
-            top: 40,
-            left: 16,
-            right: 16,
-            child: _buildHeader(),
-          ),
-          if (_instructionMessage != null)
-            Positioned(
-              top: 120,
-              left: 16,
-              right: 16,
-              child: _buildInstructionBanner(),
-            ),
-          Positioned(
-            bottom: 40,
-            left: 16,
-            right: 16,
-            child: _buildBottomControls(),
-          ),
-          if (_showPauseDialog) _buildPauseOverlay(),
         ],
       ),
     );
@@ -225,158 +219,43 @@ class _ActivityViewState extends State<ActivityView> {
 
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(12),
+      color: Colors.white,
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + 8,
+        bottom: 12,
+        left: 16,
+        right: 16,
       ),
       child: Row(
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.activityOption.title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                if (widget.activityOption.subtitle != null)
-                  Text(
-                    widget.activityOption.subtitle!,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                    ),
-                  ),
-              ],
-            ),
-          ),
           Container(
             width: 12,
             height: 12,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: _isConnected ? Colors.green : Colors.red,
-              border: Border.all(color: Colors.white, width: 2),
+            ),
+          ),
+          const Spacer(),
+          ElevatedButton.icon(
+            onPressed: _finishActivity,
+            icon: const Icon(Icons.check, size: 18),
+            label: const Text('Finalizar'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              visualDensity: VisualDensity.compact,
             ),
           ),
           const SizedBox(width: 8),
           IconButton(
-            icon: const Icon(Icons.settings, color: Colors.white),
-            onPressed: _openSettings,
-          ),
-          IconButton(
-            icon: const Icon(Icons.close, color: Colors.white),
             onPressed: () => Navigator.pop(context),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInstructionBanner() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.blue.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.lightbulb, color: Colors.white),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _instructionMessage!,
-              style: const TextStyle(color: Colors.white),
+            icon: const Icon(Icons.close),
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.grey[200],
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildBottomControls() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        ElevatedButton.icon(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back),
-          label: const Text('Salir'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.grey,
-          ),
-        ),
-        ElevatedButton.icon(
-          onPressed: _finishActivity,
-          icon: const Icon(Icons.check),
-          label: const Text('Finalizar'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPauseOverlay() {
-    return Container(
-      color: Colors.black54,
-      child: Center(
-        child: Container(
-          margin: const EdgeInsets.all(32),
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.coffee, size: 48, color: Colors.purple),
-              const SizedBox(height: 16),
-              const Text(
-                'Descanso sugerido',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Detectamos que podrias necesitar un descanso.',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _showPauseDialog = false;
-                      });
-                    },
-                    child: const Text('Continuar'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _showPauseDialog = false;
-                      });
-                    },
-                    child: const Text('Tomar descanso'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
