@@ -1,18 +1,18 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/logic/session_manager.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../data/models/recommendation_model.dart';
 
 class FloatingMenuOverlay extends StatefulWidget {
   final SessionManager sessionManager;
-  final Stream<Map<String, dynamic>> feedbackStream;
-  final Function(String url)? onVideoRequested;
+  final Stream<Recommendation>? recommendationStream;
   final VoidCallback? onVibrateRequested;
 
   const FloatingMenuOverlay({
     super.key,
     required this.sessionManager,
-    required this.feedbackStream,
-    this.onVideoRequested,
+    this.recommendationStream,
     this.onVibrateRequested,
   });
 
@@ -21,149 +21,177 @@ class FloatingMenuOverlay extends StatefulWidget {
 }
 
 class _FloatingMenuOverlayState extends State<FloatingMenuOverlay> {
-  Offset _position = const Offset(20, 100);
-  bool _isExpanded = false;
-  bool _hasAlert = false;
-  Map<String, dynamic>? _alertData;
+  bool _isPaused = false;
+  StreamSubscription<Recommendation>? _recommendationSubscription;
+  Recommendation? _currentRecommendation;
+  bool _showNotification = false;
 
   @override
   void initState() {
     super.initState();
-    widget.feedbackStream.listen((data) {
-      if (!mounted) return;
-      if (data['accion'] == 'vibracion') {
-        widget.onVibrateRequested?.call();
-        return;
-      }
+    _setupRecommendationListener();
+  }
+
+  void _setupRecommendationListener() {
+    _recommendationSubscription = widget.recommendationStream?.listen((recommendation) {
       setState(() {
-        _alertData = data;
-        _hasAlert = true;
+        _currentRecommendation = recommendation;
+        _showNotification = true;
+      });
+
+      Future.delayed(const Duration(seconds: 5), () {
+        if (mounted) {
+          setState(() {
+            _showNotification = false;
+          });
+        }
       });
     });
   }
 
   @override
+  void dispose() {
+    _recommendationSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _togglePause() async {
+    if (_isPaused) {
+      await widget.sessionManager.resumeActivity();
+    } else {
+      await widget.sessionManager.pauseActivity();
+    }
+    setState(() {
+      _isPaused = !_isPaused;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final widgetWidth = _isExpanded ? 60.0 : 50.0;
-    final widgetHeight = _isExpanded ? 240.0 : 50.0;
-    final topPadding = MediaQuery.of(context).padding.top;
-
-    return Positioned(
-      left: _position.dx,
-      top: _position.dy,
-      child: Draggable(
-        feedback: _buildBubble(isDragging: true),
-        childWhenDragging: Container(),
-        onDraggableCanceled: (velocity, offset) {
-          setState(() {
-            double x = offset.dx.clamp(0.0, size.width - widgetWidth);
-            double y = offset.dy.clamp(topPadding, size.height - widgetHeight - 20);
-            _position = Offset(x, y);
-          });
-        },
-        child: _isExpanded ? _buildVerticalMenu() : _buildBubble(),
-      ),
-    );
-  }
-
-  Widget _buildBubble({bool isDragging = false}) {
-    return GestureDetector(
-      onTap: () {
-        if (!isDragging) setState(() => _isExpanded = !_isExpanded);
-      },
-      child: Material(
-        color: AppColors.transparent,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              width: 50, height: 50,
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                shape: BoxShape.circle,
-                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))],
-                border: Border.all(color: AppColors.surface, width: 2),
-              ),
-              child: const Icon(Icons.psychology, color: AppColors.surface),
-            ),
-            if (_hasAlert && !isDragging)
-              Positioned(
-                right: 0, top: 0,
-                child: Container(
-                  width: 14, height: 14,
-                  decoration: const BoxDecoration(color: AppColors.notificationDot, shape: BoxShape.circle),
-                ),
-              )
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVerticalMenu() {
-    return Material(
-      color: AppColors.transparent,
-      child: Container(
-        width: 60,
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: AppColors.surface.withOpacity(0.95),
-          borderRadius: BorderRadius.circular(30),
-          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(icon: const Icon(Icons.close, color: AppColors.iconClose), onPressed: () => setState(() => _isExpanded = false)),
-            if (_hasAlert)
-              IconButton(icon: const Icon(Icons.notifications_active, color: AppColors.notificationDot), onPressed: _showAlertDetail),
-            IconButton(icon: const Icon(Icons.pause, color: AppColors.iconPause), onPressed: () => widget.sessionManager.pauseSession()),
-            IconButton(icon: const Icon(Icons.play_arrow, color: AppColors.iconPlay), onPressed: () => widget.sessionManager.resumeSession()),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showAlertDetail() {
-    if (_alertData == null) return;
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        final content = _alertData!['contenido'] ?? {};
-        final motivo = _alertData!['motivo'] ?? 'Asistente';
-        return AlertDialog(
-          title: Text(motivo, style: const TextStyle(fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
+    return Stack(
+      children: [
+        Positioned(
+          right: 16,
+          top: 16,
+          child: Row(
             children: [
-              Text(content['mensaje'] ?? content['descripcion'] ?? ''),
-              if (_alertData!['accion'] == 'video') ...[
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.play_circle),
-                  label: const Text('Ver Video'),
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    widget.onVideoRequested?.call(content['url']);
-                    _clearAlert();
-                  },
-                )
-              ]
+              _buildControlButton(
+                icon: _isPaused ? Icons.play_arrow : Icons.pause,
+                color: _isPaused ? AppColors.iconPlay : AppColors.iconPause,
+                onTap: _togglePause,
+              ),
             ],
           ),
-          actions: [TextButton(onPressed: () { Navigator.pop(ctx); _clearAlert(); }, child: const Text('OK'))],
-        );
-      },
+        ),
+        if (_showNotification && _currentRecommendation != null)
+          Positioned(
+            top: 60,
+            left: 16,
+            right: 16,
+            child: _buildNotificationCard(_currentRecommendation!),
+          ),
+      ],
     );
   }
 
-  void _clearAlert() {
-    setState(() {
-      _hasAlert = false;
-      _alertData = null;
-      _isExpanded = false;
-    });
+  Widget _buildControlButton({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.black54,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, color: color, size: 24),
+      ),
+    );
+  }
+
+  Widget _buildNotificationCard(Recommendation recommendation) {
+    IconData icon;
+    Color color;
+    String title;
+
+    switch (recommendation.action) {
+      case 'vibration':
+        icon = Icons.vibration;
+        color = Colors.orange;
+        title = 'Atencion';
+        break;
+      case 'instruction':
+        icon = recommendation.hasVideo ? Icons.play_circle : Icons.lightbulb;
+        color = Colors.blue;
+        title = recommendation.hasVideo ? 'Video de ayuda' : 'Sugerencia';
+        break;
+      case 'pause':
+        icon = Icons.coffee;
+        color = Colors.purple;
+        title = 'Descanso sugerido';
+        break;
+      default:
+        icon = Icons.info;
+        color = Colors.grey;
+        title = 'Notificacion';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white, size: 28),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                if (recommendation.hasMessage)
+                  Text(
+                    recommendation.content!.message!,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _showNotification = false;
+              });
+            },
+            child: const Icon(Icons.close, color: Colors.white70, size: 20),
+          ),
+        ],
+      ),
+    );
   }
 }

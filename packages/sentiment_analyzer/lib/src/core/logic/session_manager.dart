@@ -14,6 +14,7 @@ enum SessionStatus {
 enum ActivityStatus {
   none,
   inProgress,
+  paused,
   completed,
   abandoned,
 }
@@ -66,8 +67,10 @@ class SessionManager extends ChangeNotifier {
   ActivityInfo? get currentActivity => _currentActivity;
   String? get currentActivityUuid => _currentActivity?.activityUuid;
   int? get currentExternalActivityId => _currentActivity?.externalActivityId;
-  bool get hasActiveSession => _sessionId != null && _sessionStatus == SessionStatus.active;
-  bool get hasActiveActivity => _currentActivity != null && _activityStatus == ActivityStatus.inProgress;
+  bool get hasActiveSession =>
+      _sessionId != null && _sessionStatus == SessionStatus.active;
+  bool get hasActiveActivity =>
+      _currentActivity != null && _activityStatus == ActivityStatus.inProgress;
 
   SessionManager({
     required this.network,
@@ -134,7 +137,9 @@ class SessionManager extends ChangeNotifier {
           externalActivityId: currentActivityData['external_activity_id'],
           title: currentActivityData['title'] ?? '',
           activityType: 'recovered',
-          startedAt: DateTime.tryParse(currentActivityData['started_at'] ?? '') ?? DateTime.now(),
+          startedAt:
+          DateTime.tryParse(currentActivityData['started_at'] ?? '') ??
+              DateTime.now(),
         );
         _activityStatus = ActivityStatus.inProgress;
       }
@@ -161,7 +166,8 @@ class SessionManager extends ChangeNotifier {
     }
 
     try {
-      debugPrint('[SessionManager] Iniciando actividad: $title (ID: $externalActivityId)');
+      debugPrint(
+          '[SessionManager] Iniciando actividad: $title (ID: $externalActivityId)');
 
       final response = await network.startActivity(
         sessionId: _sessionId!,
@@ -200,12 +206,14 @@ class SessionManager extends ChangeNotifier {
 
   Future<bool> completeActivity({required Map<String, dynamic> feedback}) async {
     if (_sessionId == null || _currentActivity == null) {
-      debugPrint('[SessionManager] No hay sesion/actividad activa para completar');
+      debugPrint(
+          '[SessionManager] No hay sesion/actividad activa para completar');
       return false;
     }
 
     try {
-      debugPrint('[SessionManager] Completando actividad: ${_currentActivity!.activityUuid}');
+      debugPrint(
+          '[SessionManager] Completando actividad: ${_currentActivity!.activityUuid}');
 
       final response = await network.completeActivity(
         activityUuid: _currentActivity!.activityUuid,
@@ -230,12 +238,14 @@ class SessionManager extends ChangeNotifier {
 
   Future<bool> abandonActivity() async {
     if (_sessionId == null || _currentActivity == null) {
-      debugPrint('[SessionManager] No hay sesion/actividad activa para abandonar');
+      debugPrint(
+          '[SessionManager] No hay sesion/actividad activa para abandonar');
       return false;
     }
 
     try {
-      debugPrint('[SessionManager] Abandonando actividad: ${_currentActivity!.activityUuid}');
+      debugPrint(
+          '[SessionManager] Abandonando actividad: ${_currentActivity!.activityUuid}');
 
       final response = await network.abandonActivity(
         activityUuid: _currentActivity!.activityUuid,
@@ -253,6 +263,62 @@ class SessionManager extends ChangeNotifier {
       return false;
     } catch (e) {
       debugPrint('[SessionManager] Error abandonando actividad: $e');
+      return false;
+    }
+  }
+
+  Future<bool> pauseActivity() async {
+    if (_currentActivity == null) {
+      debugPrint('[SessionManager] No hay actividad activa para pausar');
+      return false;
+    }
+
+    try {
+      debugPrint(
+          '[SessionManager] Pausando actividad: ${_currentActivity!.activityUuid}');
+
+      final response = await network.pauseActivity(
+        activityUuid: _currentActivity!.activityUuid,
+      );
+
+      if (response['status'] == 'pausada') {
+        _activityStatus = ActivityStatus.paused;
+        debugPrint('[SessionManager] Actividad pausada');
+        notifyListeners();
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      debugPrint('[SessionManager] Error pausando actividad: $e');
+      return false;
+    }
+  }
+
+  Future<bool> resumeActivity() async {
+    if (_currentActivity == null) {
+      debugPrint('[SessionManager] No hay actividad para reanudar');
+      return false;
+    }
+
+    try {
+      debugPrint(
+          '[SessionManager] Reanudando actividad: ${_currentActivity!.activityUuid}');
+
+      final response = await network.resumeActivity(
+        activityUuid: _currentActivity!.activityUuid,
+      );
+
+      if (response['status'] == 'en_progreso') {
+        _activityStatus = ActivityStatus.inProgress;
+        debugPrint('[SessionManager] Actividad reanudada');
+        notifyListeners();
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      debugPrint('[SessionManager] Error reanudando actividad: $e');
       return false;
     }
   }
@@ -366,25 +432,21 @@ class SessionManager extends ChangeNotifier {
       return;
     }
 
-    debugPrint('[SessionManager] Intento de reconexion $_reconnectAttempts/$maxReconnectAttempts');
+    debugPrint(
+        '[SessionManager] Intento de reconexion $_reconnectAttempts/$maxReconnectAttempts');
 
     await Future.delayed(reconnectDelay * _reconnectAttempts);
 
     try {
       if (_sessionId != null) {
         final response = await network.getSession(_sessionId!);
-        final status = response['status'];
-
-        if (status == 'activa') {
-          _sessionStatus = SessionStatus.active;
+        if (response['status'] == 'activa') {
+          _reconnectAttempts = 0;
           debugPrint('[SessionManager] Reconexion exitosa');
-        } else if (status == 'expirada' || status == 'finalizada') {
-          debugPrint('[SessionManager] Sesion expirada, creando nueva');
-          await initializeSession();
         }
       }
     } catch (e) {
-      debugPrint('[SessionManager] Error en reconexion: $e');
+      debugPrint('[SessionManager] Reconexion fallida: $e');
     }
 
     _isReconnecting = false;

@@ -8,6 +8,7 @@ export 'src/core/logic/state_aggregator.dart' show CombinedState;
 export 'src/core/logic/session_manager.dart';
 
 export 'src/data/models/calibration_result.dart';
+export 'src/data/models/recommendation_model.dart';
 
 export 'src/data/interfaces/network_interface.dart';
 export 'src/data/services/calibration_storage.dart';

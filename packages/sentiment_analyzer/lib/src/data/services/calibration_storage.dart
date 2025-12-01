@@ -1,5 +1,4 @@
 import 'package:shared_preferences/shared_preferences.dart';
-// RUTA CORREGIDA:
 import '../models/calibration_result.dart';
 
 class CalibrationStorage {
@@ -8,7 +7,6 @@ class CalibrationStorage {
   static const String _keyPitch = 'calibration_pitch';
   static const String _keyYaw = 'calibration_yaw';
 
-  /// Guarda el resultado de la calibración en disco
   Future<void> save(CalibrationResult result) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -27,17 +25,16 @@ class CalibrationStorage {
         await prefs.setDouble(_keyYaw, result.baselineYaw!);
       }
     } catch (e) {
-      print('[CalibrationStorage] Error guardando calibración: $e');
+      debugPrint('[CalibrationStorage] Error guardando calibracion: $e');
     }
   }
 
-  /// Carga la calibración guardada anteriormente
   Future<CalibrationResult?> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
 
       if (!prefs.containsKey(_keyIsSuccessful)) {
-        return null; // No hay calibración guardada
+        return null;
       }
 
       final isSuccessful = prefs.getBool(_keyIsSuccessful) ?? false;
@@ -52,12 +49,11 @@ class CalibrationStorage {
         baselineYaw: yaw,
       );
     } catch (e) {
-      print('[CalibrationStorage] Error cargando calibración: $e');
+      debugPrint('[CalibrationStorage] Error cargando calibracion: $e');
       return null;
     }
   }
 
-  /// Borra la calibración guardada (útil para recalibrar)
   Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyIsSuccessful);
@@ -65,4 +61,8 @@ class CalibrationStorage {
     await prefs.remove(_keyPitch);
     await prefs.remove(_keyYaw);
   }
+}
+
+void debugPrint(String message) {
+  print(message);
 }

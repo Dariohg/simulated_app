@@ -18,7 +18,7 @@ class AppTextStyles {
   );
   static const TextStyle body2 = TextStyle(
     fontSize: 14,
-    color: AppColors.onBackground, // Corregido para visibilidad
+    color: AppColors.onBackground,
   );
   static const TextStyle button = TextStyle(
     fontSize: 14,

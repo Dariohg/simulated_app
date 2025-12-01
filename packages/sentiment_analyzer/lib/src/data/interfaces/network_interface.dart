@@ -33,6 +33,14 @@ abstract class SentimentNetworkInterface {
     required String activityUuid,
   });
 
+  Future<Map<String, dynamic>> pauseActivity({
+    required String activityUuid,
+  });
+
+  Future<Map<String, dynamic>> resumeActivity({
+    required String activityUuid,
+  });
+
   Future<void> updateConfig({
     required String sessionId,
     required bool cognitiveAnalysisEnabled,

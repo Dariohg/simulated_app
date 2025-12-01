@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui';
 import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' hide debugPrint;
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_face_mesh_detection/google_mlkit_face_mesh_detection.dart';
 
@@ -40,11 +40,12 @@ class CalibrationViewModel extends ChangeNotifier {
   CalibrationStep get currentStep => _calibrationService.currentStep;
 
   Future<void> initialize() async {
-    _progressSubscription = _calibrationService.progressStream.listen((progress) {
-      _currentProgress = progress;
-      if (progress.shouldVibrate) HapticFeedback.mediumImpact();
-      notifyListeners();
-    });
+    _progressSubscription =
+        _calibrationService.progressStream.listen((progress) {
+          _currentProgress = progress;
+          if (progress.shouldVibrate) HapticFeedback.mediumImpact();
+          notifyListeners();
+        });
 
     _cameraReadySubscription = _cameraService.onCameraReady.listen((isReady) {
       if (isReady) {
@@ -124,10 +125,10 @@ class CalibrationViewModel extends ChangeNotifier {
   }
 
   List<FaceMeshPoint> _preparePoints(FaceMesh mesh) {
-    return List.generate(468, (index) => mesh.points.firstWhere(
-            (p) => p.index == index,
-        orElse: () => FaceMeshPoint(index: index, x: 0, y: 0, z: 0)
-    ));
+    return List.generate(
+        468,
+            (index) => mesh.points.firstWhere((p) => p.index == index,
+            orElse: () => FaceMeshPoint(index: index, x: 0, y: 0, z: 0)));
   }
 
   InputImage? _convertCameraImageToInputImage(CameraImage image) {
@@ -135,11 +136,16 @@ class CalibrationViewModel extends ChangeNotifier {
     if (camera == null) return null;
 
     final allBytes = WriteBuffer();
-    for (final Plane plane in image.planes) allBytes.putUint8List(plane.bytes);
+    for (final Plane plane in image.planes) {
+      allBytes.putUint8List(plane.bytes);
+    }
     final bytes = allBytes.done().buffer.asUint8List();
 
-    final rotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation) ?? InputImageRotation.rotation0deg;
-    final format = InputImageFormatValue.fromRawValue(image.format.raw) ?? InputImageFormat.nv21;
+    final rotation =
+        InputImageRotationValue.fromRawValue(camera.sensorOrientation) ??
+            InputImageRotation.rotation0deg;
+    final format = InputImageFormatValue.fromRawValue(image.format.raw) ??
+        InputImageFormat.nv21;
 
     return InputImage.fromBytes(
       bytes: bytes,

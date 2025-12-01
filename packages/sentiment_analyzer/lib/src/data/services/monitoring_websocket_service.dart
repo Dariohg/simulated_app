@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as ws_status;
+import '../models/recommendation_model.dart';
 
 enum WebSocketStatus {
   disconnected,
@@ -36,13 +37,15 @@ class MonitoringWebSocketService extends ChangeNotifier {
   static const Duration pingInterval = Duration(seconds: 30);
   static const Duration handshakeTimeout = Duration(seconds: 10);
 
-  final StreamController<Map<String, dynamic>> _interventionController =
-  StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Recommendation> _recommendationController =
+  StreamController<Recommendation>.broadcast();
 
   WebSocketStatus get status => _status;
   bool get isConnected => _status == WebSocketStatus.ready;
-  bool get isConnecting => _status == WebSocketStatus.connecting || _status == WebSocketStatus.handshaking;
-  Stream<Map<String, dynamic>> get interventions => _interventionController.stream;
+  bool get isConnecting =>
+      _status == WebSocketStatus.connecting ||
+          _status == WebSocketStatus.handshaking;
+  Stream<Recommendation> get recommendations => _recommendationController.stream;
   String? get currentActivityUuid => _currentActivityUuid;
 
   MonitoringWebSocketService({
@@ -88,7 +91,8 @@ class MonitoringWebSocketService extends ChangeNotifier {
 
       _setupListeners();
 
-      final handshakeSuccess = await _performHandshake(userId, externalActivityId);
+      final handshakeSuccess =
+      await _performHandshake(userId, externalActivityId);
 
       if (!handshakeSuccess) {
         debugPrint('[MonitoringWS] Handshake fallido');
@@ -187,16 +191,16 @@ class MonitoringWebSocketService extends ChangeNotifier {
   void _handleMessage(dynamic message) {
     try {
       final data = jsonDecode(message as String) as Map<String, dynamic>;
+      final type = data['type'] as String?;
 
-      if (data['type'] == 'handshake_ack') {
+      if (type == 'handshake_ack' || type == 'pong') {
         return;
       }
 
-      debugPrint('[MonitoringWS] Mensaje recibido: $data');
-
-      if (data.containsKey('intervention_id') ||
-          (data.containsKey('type') && data['type'] != 'pong')) {
-        _interventionController.add(data);
+      if (type == 'recommendation') {
+        debugPrint('[MonitoringWS] Recomendacion recibida: ${data['action']}');
+        final recommendation = Recommendation.fromJson(data);
+        _recommendationController.add(recommendation);
       }
     } catch (e) {
       debugPrint('[MonitoringWS] Error parseando mensaje: $e');
@@ -240,7 +244,8 @@ class MonitoringWebSocketService extends ChangeNotifier {
     notifyListeners();
 
     final delay = reconnectDelay * _reconnectAttempts;
-    debugPrint('[MonitoringWS] Reconectando en ${delay.inSeconds}s (intento $_reconnectAttempts)');
+    debugPrint(
+        '[MonitoringWS] Reconectando en ${delay.inSeconds}s (intento $_reconnectAttempts)');
 
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(delay, () {
@@ -265,10 +270,12 @@ class MonitoringWebSocketService extends ChangeNotifier {
   }
 
   void _sendPing() {
-    if (_status != WebSocketStatus.ready) return;
-
     try {
-      _channel?.sink.add(jsonEncode({'type': 'ping'}));
+      final pingMessage = jsonEncode({
+        'type': 'ping',
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      });
+      _channel?.sink.add(pingMessage);
     } catch (e) {
       debugPrint('[MonitoringWS] Error enviando ping: $e');
     }
@@ -276,20 +283,24 @@ class MonitoringWebSocketService extends ChangeNotifier {
 
   void sendFrame(Map<String, dynamic> frameData) {
     if (_status != WebSocketStatus.ready) {
-      debugPrint('[MonitoringWS] No listo, frame descartado (status: $_status)');
       return;
     }
 
     try {
-      final json = jsonEncode(frameData);
-      _channel?.sink.add(json);
+      frameData['metadata'] ??= {};
+      frameData['metadata']['user_id'] = _userId;
+      frameData['metadata']['session_id'] = _currentSessionId;
+      frameData['metadata']['external_activity_id'] = _externalActivityId;
+
+      final message = jsonEncode(frameData);
+      _channel?.sink.add(message);
     } catch (e) {
       debugPrint('[MonitoringWS] Error enviando frame: $e');
     }
   }
 
   Future<void> disconnect() async {
-    debugPrint('[MonitoringWS] Desconectando');
+    debugPrint('[MonitoringWS] Desconectando...');
 
     _pingTimer?.cancel();
     _pingTimer = null;
@@ -297,30 +308,25 @@ class MonitoringWebSocketService extends ChangeNotifier {
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
 
-    _subscription?.cancel();
+    await _subscription?.cancel();
     _subscription = null;
 
     try {
-      await _channel?.sink.close(ws_status.normalClosure);
+      await _channel?.sink.close(ws_status.goingAway);
     } catch (e) {
       debugPrint('[MonitoringWS] Error cerrando canal: $e');
     }
-
     _channel = null;
-    _currentSessionId = null;
-    _currentActivityUuid = null;
-    _userId = null;
-    _externalActivityId = null;
-    _status = WebSocketStatus.disconnected;
-    _reconnectAttempts = 0;
 
+    _currentActivityUuid = null;
+    _status = WebSocketStatus.disconnected;
     notifyListeners();
   }
 
   @override
   void dispose() {
     disconnect();
-    _interventionController.close();
+    _recommendationController.close();
     super.dispose();
   }
 }

@@ -1,19 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:vibration/vibration.dart';
 import 'package:sentiment_analyzer/sentiment_analyzer.dart';
 import '../../../../core/mocks/mock_activities.dart';
-import '../../../../core/models/session_model.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/config/env_config.dart';
 import '../../../session_summary/presentation/views/session_summary_view.dart';
-import '../viewmodels/activity_view_model.dart';
 
 class ActivityView extends StatefulWidget {
-  final SessionModel session;
+  final SessionManager sessionManager;
   final ActivityOption activityOption;
 
   const ActivityView({
     super.key,
-    required this.session,
+    required this.sessionManager,
     required this.activityOption,
   });
 
@@ -22,20 +20,45 @@ class ActivityView extends StatefulWidget {
 }
 
 class _ActivityViewState extends State<ActivityView> {
-  late final ActivityViewModel _viewModel;
+  bool _isInitializing = true;
+  String? _error;
+  String? _instructionMessage;
+  bool _showPauseDialog = false;
 
   @override
   void initState() {
     super.initState();
-    _viewModel = ActivityViewModel(
-      session: widget.session,
-      activityOption: widget.activityOption,
-    );
-    _viewModel.startActivity();
+    _startActivity();
   }
 
-  void _finishActivity() async {
-    await _viewModel.stopActivity();
+  Future<void> _startActivity() async {
+    try {
+      final success = await widget.sessionManager.startActivity(
+        externalActivityId: widget.activityOption.externalActivityId,
+        title: widget.activityOption.title,
+        subtitle: widget.activityOption.subtitle,
+        content: widget.activityOption.content,
+        activityType: widget.activityOption.activityType,
+      );
+
+      if (!success) {
+        _error = 'No se pudo iniciar la actividad';
+      }
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      setState(() {
+        _isInitializing = false;
+      });
+    }
+  }
+
+  Future<void> _finishActivity() async {
+    await widget.sessionManager.completeActivity(feedback: {
+      'rating': 5,
+      'completed': true,
+    });
+
     if (mounted) {
       Navigator.pushReplacement(
         context,
@@ -44,103 +67,256 @@ class _ActivityViewState extends State<ActivityView> {
     }
   }
 
+  void _handleVibration() async {
+    final hasVibrator = await Vibration.hasVibrator() ?? false;
+    if (hasVibrator) {
+      Vibration.vibrate(duration: 500);
+    }
+  }
+
+  void _handleInstruction(String message) {
+    setState(() {
+      _instructionMessage = message;
+    });
+
+    Future.delayed(const Duration(seconds: 5), () {
+      if (mounted) {
+        setState(() {
+          _instructionMessage = null;
+        });
+      }
+    });
+  }
+
+  void _handlePause(String message) {
+    setState(() {
+      _showPauseDialog = true;
+    });
+  }
+
+  void _handleVideo(String url, String? title) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title ?? 'Video de ayuda'),
+        content: Text('URL del video: $url'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: ListenableBuilder(
-        listenable: _viewModel,
-        builder: (context, _) {
-          return Stack(
+    if (_isInitializing) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_error != null) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // 1. Capa de Cámara
-              Positioned.fill(
-                child: SentimentAnalyzer(
-                  onAnalysisComplete: _viewModel.onFrameProcessed,
-                  showDebugOverlay: false,
-                ),
+              Text('Error: $_error'),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Volver'),
               ),
-
-              // 2. Header
-              Positioned(
-                top: 40,
-                left: 20,
-                right: 20,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.activityOption.title, // CORREGIDO
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                          ),
-                          // Si hay contenido específico para leer, lo mostramos pequeño
-                          if (widget.activityOption.content != null)
-                            Text(
-                              "Contenido disponible",
-                              style: const TextStyle(color: Colors.white70, fontSize: 10),
-                            ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.stop_circle, color: Colors.red, size: 40),
-                      onPressed: _finishActivity,
-                    ),
-                  ],
-                ),
-              ),
-
-              // ... resto del código igual (Feedback y Loading)
-              if (_viewModel.feedbackMessage != null)
-                Positioned(
-                  bottom: 100,
-                  left: 20,
-                  right: 20,
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.error.withOpacity(0.9),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.warning, color: Colors.white),
-                        const SizedBox(width: 12),
-                        Text(
-                          _viewModel.feedbackMessage!,
-                          style: AppTextStyles.headline6.copyWith(color: Colors.white),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-              if (_viewModel.isInitializing)
-                Container(
-                  color: Colors.black87,
-                  child: const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 16),
-                        Text("Iniciando actividad...", style: TextStyle(color: Colors.white))
-                      ],
-                    ),
-                  ),
-                ),
             ],
-          );
-        },
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      body: Stack(
+        children: [
+          SentimentAnalysisManager(
+            sessionManager: widget.sessionManager,
+            externalActivityId: widget.activityOption.externalActivityId,
+            gatewayUrl: EnvConfig.apiGatewayUrl,
+            apiKey: EnvConfig.apiToken,
+            onVibrateRequested: _handleVibration,
+            onInstructionReceived: _handleInstruction,
+            onPauseReceived: _handlePause,
+            onVideoReceived: _handleVideo,
+            onStateChanged: (state) {
+              print('[ActivityView] Estado: ${state.finalState}');
+            },
+          ),
+          Positioned(
+            top: 40,
+            left: 16,
+            right: 16,
+            child: _buildHeader(),
+          ),
+          if (_instructionMessage != null)
+            Positioned(
+              top: 120,
+              left: 16,
+              right: 16,
+              child: _buildInstructionBanner(),
+            ),
+          Positioned(
+            bottom: 40,
+            left: 16,
+            right: 16,
+            child: _buildBottomControls(),
+          ),
+          if (_showPauseDialog) _buildPauseOverlay(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.activityOption.title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                if (widget.activityOption.subtitle != null)
+                  Text(
+                    widget.activityOption.subtitle!,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.white),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInstructionBanner() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blue.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.lightbulb, color: Colors.white),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _instructionMessage!,
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomControls() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        ElevatedButton.icon(
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back),
+          label: const Text('Salir'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.grey,
+          ),
+        ),
+        ElevatedButton.icon(
+          onPressed: _finishActivity,
+          icon: const Icon(Icons.check),
+          label: const Text('Finalizar'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPauseOverlay() {
+    return Container(
+      color: Colors.black54,
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.coffee, size: 48, color: Colors.purple),
+              const SizedBox(height: 16),
+              const Text(
+                'Descanso sugerido',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Detectamos que podrias necesitar un descanso.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _showPauseDialog = false;
+                      });
+                    },
+                    child: const Text('Continuar'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        _showPauseDialog = false;
+                      });
+                    },
+                    child: const Text('Tomar descanso'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

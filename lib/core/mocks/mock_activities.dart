@@ -18,14 +18,14 @@ class MockActivities {
   static const List<ActivityOption> list = [
     ActivityOption(
       externalActivityId: 501,
-      title: "Lectura Rápida",
+      title: "Lectura Rapida",
       subtitle: "Lee el siguiente texto en voz alta",
-      content: "El veloz murciélago hindú comía feliz cardillo y kiwi...",
+      content: "El veloz murcielago hindu comia feliz cardillo y kiwi...",
       activityType: "LECTURA",
     ),
     ActivityOption(
       externalActivityId: 502,
-      title: "Cálculo Mental",
+      title: "Calculo Mental",
       subtitle: "Resuelve las operaciones sin usar papel",
       content: "25 + 15 * 2 = ?",
       activityType: "LOGICA",
@@ -34,7 +34,7 @@ class MockActivities {
       externalActivityId: 503,
       title: "Enfoque Visual",
       subtitle: "Sigue el punto rojo con la mirada",
-      content: null, // Ejemplo de actividad sin contenido texto
+      content: null,
       activityType: "ATENCION",
     ),
   ];

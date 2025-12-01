@@ -23,10 +23,13 @@ class CombinedState {
   });
 
   Map<String, dynamic> toJson() {
-    final scoresList = emotionScores?.entries.map((e) => {
+    final scoresList = emotionScores?.entries
+        .map((e) => {
       'emocion': e.key,
       'confianza': e.value,
-    }).toList() ?? [];
+    })
+        .toList() ??
+        [];
 
     return {
       'metadata': {

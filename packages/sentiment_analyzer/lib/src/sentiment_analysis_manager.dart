@@ -1,15 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart';
 
 import 'presentation/analysis/viewmodel/analysis_view_model.dart';
 import 'presentation/analysis/widgets/analysis_overlay.dart';
 
 import 'data/services/camera_service.dart';
 import 'data/services/face_mesh_service.dart';
-import 'data/services/feedback_service.dart';
 import 'data/services/monitoring_websocket_service.dart';
 import 'data/models/calibration_result.dart';
+import 'data/models/recommendation_model.dart';
 
 import 'core/logic/state_aggregator.dart';
 import 'core/logic/session_manager.dart';
@@ -23,16 +23,11 @@ class SentimentAnalysisManager extends StatefulWidget {
   final String gatewayUrl;
   final String apiKey;
 
-  final String amqpHost;
-  final String amqpQueue;
-  final String amqpUser;
-  final String amqpPass;
-  final String amqpVirtualHost;
-  final int amqpPort;
-
-  final Function(String url)? onVideoRequested;
   final VoidCallback? onVibrateRequested;
-  final Function(String type, double confidence)? onInterventionReceived;
+  final Function(String message)? onInstructionReceived;
+  final Function(String message)? onPauseReceived;
+  final Function(String url, String? title)? onVideoReceived;
+  final Function(Recommendation recommendation)? onRecommendationReceived;
 
   const SentimentAnalysisManager({
     super.key,
@@ -42,28 +37,25 @@ class SentimentAnalysisManager extends StatefulWidget {
     this.onStateChanged,
     required this.gatewayUrl,
     required this.apiKey,
-    this.amqpHost = 'localhost',
-    this.amqpQueue = 'feedback_queue',
-    this.amqpUser = 'guest',
-    this.amqpPass = 'guest',
-    this.amqpVirtualHost = '/',
-    this.amqpPort = 5672,
-    this.onVideoRequested,
     this.onVibrateRequested,
-    this.onInterventionReceived,
+    this.onInstructionReceived,
+    this.onPauseReceived,
+    this.onVideoReceived,
+    this.onRecommendationReceived,
   });
 
   @override
-  State<SentimentAnalysisManager> createState() => _SentimentAnalysisManagerState();
+  State<SentimentAnalysisManager> createState() =>
+      _SentimentAnalysisManagerState();
 }
 
-class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> with WidgetsBindingObserver {
-  late FeedbackService _feedbackService;
+class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager>
+    with WidgetsBindingObserver {
   late AnalysisViewModel _viewModel;
   late MonitoringWebSocketService _monitoringWs;
 
   Timer? _frameTimer;
-  StreamSubscription? _interventionSubscription;
+  StreamSubscription<Recommendation>? _recommendationSubscription;
 
   static const Duration frameInterval = Duration(milliseconds: 1000);
 
@@ -77,16 +69,6 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> wit
       apiKey: widget.apiKey,
     );
 
-    _feedbackService = FeedbackService();
-    _feedbackService.connect(
-      host: widget.amqpHost,
-      queueName: widget.amqpQueue,
-      username: widget.amqpUser,
-      password: widget.amqpPass,
-      virtualHost: widget.amqpVirtualHost,
-      port: widget.amqpPort,
-    );
-
     _viewModel = AnalysisViewModel(
       cameraService: CameraService(),
       faceMeshService: FaceMeshService(),
@@ -97,7 +79,7 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> wit
     }
 
     _connectMonitoringWebSocket();
-    _setupInterventionListener();
+    _setupRecommendationListener();
   }
 
   Future<void> _connectMonitoringWebSocket() async {
@@ -128,27 +110,37 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> wit
     }
   }
 
-  void _setupInterventionListener() {
-    _interventionSubscription = _monitoringWs.interventions.listen((intervention) {
-      _handleIntervention(intervention);
-    });
+  void _setupRecommendationListener() {
+    _recommendationSubscription =
+        _monitoringWs.recommendations.listen(_handleRecommendation);
   }
 
-  void _handleIntervention(Map<String, dynamic> intervention) {
-    final type = intervention['type'] as String?;
-    final confidence = (intervention['confidence'] as num?)?.toDouble() ?? 0.0;
+  void _handleRecommendation(Recommendation recommendation) {
+    debugPrint(
+        '[SentimentManager] Recomendacion recibida: ${recommendation.action}');
 
-    debugPrint('[SentimentManager] Intervencion recibida: $type (confianza: $confidence)');
+    widget.onRecommendationReceived?.call(recommendation);
 
-    widget.onInterventionReceived?.call(type ?? 'unknown', confidence);
-
-    switch (type) {
+    switch (recommendation.action) {
       case 'vibration':
         widget.onVibrateRequested?.call();
         break;
+
       case 'instruction':
+        if (recommendation.hasVideo) {
+          widget.onVideoReceived?.call(
+            recommendation.content!.videoUrl!,
+            recommendation.content?.title,
+          );
+        } else if (recommendation.hasMessage) {
+          widget.onInstructionReceived?.call(recommendation.content!.message!);
+        }
         break;
+
       case 'pause':
+        final message =
+            recommendation.content?.message ?? 'Se recomienda tomar un descanso';
+        widget.onPauseReceived?.call(message);
         break;
     }
   }
@@ -184,20 +176,30 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> wit
     switch (state) {
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
-        _stopFrameTransmission();
-        _monitoringWs.disconnect();
-        widget.sessionManager.pauseSession();
+        _handleAppPaused();
         break;
-
       case AppLifecycleState.resumed:
-        widget.sessionManager.resumeSession().then((_) {
-          _connectMonitoringWebSocket();
-        });
+        _handleAppResumed();
         break;
+      default:
+        break;
+    }
+  }
 
-      case AppLifecycleState.detached:
-      case AppLifecycleState.hidden:
-        break;
+  void _handleAppPaused() {
+    debugPrint('[SentimentManager] App pausada');
+    _viewModel.setPaused(true);
+    _stopFrameTransmission();
+  }
+
+  void _handleAppResumed() {
+    debugPrint('[SentimentManager] App reanudada');
+    _viewModel.setPaused(false);
+
+    if (_monitoringWs.isConnected) {
+      _startFrameTransmission();
+    } else {
+      _connectMonitoringWebSocket();
     }
   }
 
@@ -205,23 +207,19 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> wit
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _stopFrameTransmission();
-    _interventionSubscription?.cancel();
+    _recommendationSubscription?.cancel();
     _monitoringWs.dispose();
-    _feedbackService.dispose();
     _viewModel.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider.value(
-      value: _viewModel,
-      child: AnalysisOverlay(
-        feedbackStream: _feedbackService.feedbackStream,
-        sessionManager: widget.sessionManager,
-        onVideoRequested: widget.onVideoRequested,
-        onVibrateRequested: widget.onVibrateRequested,
-      ),
+    return AnalysisOverlay(
+      viewModel: _viewModel,
+      sessionManager: widget.sessionManager,
+      recommendationStream: _monitoringWs.recommendations,
+      onVibrateRequested: widget.onVibrateRequested,
     );
   }
 }

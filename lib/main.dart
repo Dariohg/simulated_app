@@ -4,6 +4,7 @@ import 'core/theme/app_theme.dart';
 import 'features/home/presentation/views/home_view.dart';
 
 Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
   runApp(const MainApp());
 }

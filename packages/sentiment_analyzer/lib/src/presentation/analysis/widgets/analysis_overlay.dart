@@ -1,83 +1,99 @@
-import 'package:camera/camera.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:camera/camera.dart';
 import '../viewmodel/analysis_view_model.dart';
-import 'floating_menu_overlay.dart';
-import '../../../core/logic/session_manager.dart';
 import '../../../core/logic/state_aggregator.dart';
+import '../../../core/logic/session_manager.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../data/models/recommendation_model.dart';
+import 'floating_menu_overlay.dart';
 
 class AnalysisOverlay extends StatelessWidget {
-  final void Function(CombinedState state)? onStateChanged;
-  final Stream<Map<String, dynamic>> feedbackStream;
+  final AnalysisViewModel viewModel;
   final SessionManager sessionManager;
-  final Function(String url)? onVideoRequested;
+  final Stream<Recommendation>? recommendationStream;
   final VoidCallback? onVibrateRequested;
 
   const AnalysisOverlay({
     super.key,
-    this.onStateChanged,
-    required this.feedbackStream,
+    required this.viewModel,
     required this.sessionManager,
-    this.onVideoRequested,
+    this.recommendationStream,
     this.onVibrateRequested,
   });
 
   @override
   Widget build(BuildContext context) {
-    final viewModel = context.watch<AnalysisViewModel>();
+    return ListenableBuilder(
+      listenable: viewModel,
+      builder: (context, _) {
+        if (!viewModel.isInitialized || viewModel.cameraController == null) {
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
 
-    if (onStateChanged != null && viewModel.currentState != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        onStateChanged!(viewModel.currentState!);
-      });
-    }
-
-    if (!viewModel.isInitialized || viewModel.cameraController == null) {
-      return Positioned(
-        right: 16, bottom: 16,
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: AppColors.overlay, borderRadius: BorderRadius.circular(12)),
-          child: const CircularProgressIndicator(strokeWidth: 2, color: AppColors.surface),
-        ),
-      );
-    }
-
-    final borderColor = _getBorderColor(viewModel.currentState);
-
-    return Stack(
-      children: [
-        Positioned(
-          right: 16, bottom: 16, width: 100, height: 133,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: borderColor, width: 3),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: AspectRatio(
+                aspectRatio: viewModel.cameraController!.value.aspectRatio,
                 child: CameraPreview(viewModel.cameraController!),
               ),
             ),
-          ),
-        ),
-        if (viewModel.currentState != null)
-          Positioned(
-            right: 16, bottom: 160,
-            child: _buildDetailedInfoPanel(context, viewModel.currentState!),
-          ),
-        Positioned.fill(
-          child: FloatingMenuOverlay(
-            sessionManager: sessionManager,
-            feedbackStream: feedbackStream,
-            onVideoRequested: onVideoRequested,
-            onVibrateRequested: onVibrateRequested,
-          ),
-        ),
-      ],
+            Positioned(
+              left: 16,
+              bottom: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: _getBorderColor(viewModel.currentState).withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: viewModel.currentState?.faceDetected == true
+                            ? Colors.green
+                            : Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      viewModel.currentState?.finalState.toUpperCase() ?? 'CARGANDO',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (viewModel.currentState != null)
+              Positioned(
+                right: 16,
+                bottom: 160,
+                child: _buildDetailedInfoPanel(context, viewModel.currentState!),
+              ),
+            Positioned.fill(
+              child: FloatingMenuOverlay(
+                sessionManager: sessionManager,
+                recommendationStream: recommendationStream,
+                onVibrateRequested: onVibrateRequested,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -109,16 +125,32 @@ class AnalysisOverlay extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(width: 8, height: 8, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: statusColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12), overflow: TextOverflow.ellipsis),
+                child: Text(
+                  statusText,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),
           const Divider(color: Colors.white24, height: 12),
-          _buildMetricRow("Emoción", emotionText),
-          _buildMetricRow("Confianza", "${(state.confidence * 100).toStringAsFixed(0)}%"),
+          _buildMetricRow("Emocion", emotionText),
+          _buildMetricRow(
+              "Confianza", "${(state.confidence * 100).toStringAsFixed(0)}%"),
           if (state.drowsiness != null)
             _buildMetricRow("Ojos (EAR)", state.drowsiness!.ear.toStringAsFixed(2)),
         ],
@@ -132,27 +164,45 @@ class AnalysisOverlay extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 10)),
-          Text(value, style: const TextStyle(color: AppColors.surface, fontWeight: FontWeight.w500, fontSize: 10)),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white70, fontSize: 10),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              color: AppColors.surface,
+              fontWeight: FontWeight.w500,
+              fontSize: 10,
+            ),
+          ),
         ],
       ),
     );
   }
 
   Color _getBorderColor(CombinedState? state) {
-    if (state == null) return AppColors.statusNoLooking;
-    if (state.drowsiness?.isYawning == true) return AppColors.statusDistracted;
+    if (state == null || !state.faceDetected) {
+      return Colors.grey;
+    }
     return _getStateColor(state.finalState);
   }
 
   Color _getStateColor(String state) {
     switch (state.toLowerCase()) {
-      case 'concentrado': return AppColors.statusConcentrated;
-      case 'distraido': return AppColors.statusDistracted;
-      case 'frustrado': return AppColors.statusFrustrated;
-      case 'durmiendo': return AppColors.statusSleeping;
-      case 'no_mirando': return AppColors.statusNoLooking;
-      default: return AppColors.surface;
+      case 'concentrado':
+      case 'entendiendo':
+        return AppColors.statusConcentrated;
+      case 'distraido':
+      case 'no_mirando':
+        return AppColors.statusDistracted;
+      case 'frustrado':
+      case 'confundido':
+        return AppColors.statusFrustrated;
+      case 'durmiendo':
+        return AppColors.statusSleeping;
+      default:
+        return Colors.grey;
     }
   }
 }

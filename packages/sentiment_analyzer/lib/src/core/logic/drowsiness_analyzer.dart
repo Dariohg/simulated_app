@@ -25,43 +25,41 @@ class DrowsinessAnalyzer {
   final double _marThreshold;
   final int _drowsyFramesThreshold;
   final int _yawnFramesThreshold;
+  final int _maxDrowsyBuffer;
+  final int _maxYawnBuffer;
 
   int _drowsyCounter = 0;
   int _yawnCounter = 0;
-  late final int _maxDrowsyBuffer;
-  late final int _maxYawnBuffer;
 
   DrowsinessAnalyzer({
-    double earThreshold = 0.22,
+    double earThreshold = 0.21,
     double marThreshold = 0.6,
     int drowsyFramesThreshold = 20,
     int yawnFramesThreshold = 15,
+    int maxDrowsyBuffer = 30,
+    int maxYawnBuffer = 20,
   })  : _earThreshold = earThreshold,
         _marThreshold = marThreshold,
         _drowsyFramesThreshold = drowsyFramesThreshold,
-        _yawnFramesThreshold = yawnFramesThreshold {
-    _maxDrowsyBuffer = drowsyFramesThreshold + 10;
-    _maxYawnBuffer = yawnFramesThreshold + 10;
-  }
+        _yawnFramesThreshold = yawnFramesThreshold,
+        _maxDrowsyBuffer = maxDrowsyBuffer,
+        _maxYawnBuffer = maxYawnBuffer;
 
-  void updateEarThreshold(double threshold) {
-    _earThreshold = threshold;
+  void updateEarThreshold(double newThreshold) {
+    _earThreshold = newThreshold;
   }
-
-  double get earThreshold => _earThreshold;
 
   double _distance(FaceMeshPoint p1, FaceMeshPoint p2) {
-    return sqrt(pow(p1.x - p2.x, 2) + pow(p1.y - p2.y, 2));
+    return sqrt(pow(p2.x - p1.x, 2) + pow(p2.y - p1.y, 2));
   }
 
-  double _calculateEAR(List<FaceMeshPoint> allPoints, List<int> eyeIndices) {
-    if (eyeIndices.length < 6) return 0.0;
-    final p1 = allPoints[eyeIndices[0]];
-    final p2 = allPoints[eyeIndices[1]];
-    final p3 = allPoints[eyeIndices[2]];
-    final p4 = allPoints[eyeIndices[3]];
-    final p5 = allPoints[eyeIndices[4]];
-    final p6 = allPoints[eyeIndices[5]];
+  double _calculateEAR(List<FaceMeshPoint> points, List<int> eyeIndices) {
+    final p1 = points[eyeIndices[0]];
+    final p2 = points[eyeIndices[1]];
+    final p3 = points[eyeIndices[2]];
+    final p4 = points[eyeIndices[3]];
+    final p5 = points[eyeIndices[4]];
+    final p6 = points[eyeIndices[5]];
 
     final vertical1 = _distance(p2, p6);
     final vertical2 = _distance(p3, p5);
@@ -71,15 +69,14 @@ class DrowsinessAnalyzer {
     return (vertical1 + vertical2) / (2.0 * horizontal);
   }
 
-  double _calculateMAR(List<FaceMeshPoint> allPoints, List<int> mouthIndices) {
-    if (mouthIndices.length < 4) return 0.0;
-    final pLeft = allPoints[mouthIndices[0]];
-    final pRight = allPoints[mouthIndices[1]];
-    final pTop = allPoints[mouthIndices[2]];
-    final pBottom = allPoints[mouthIndices[3]];
+  double _calculateMAR(List<FaceMeshPoint> points, List<int> mouthIndices) {
+    final top = points[mouthIndices[0]];
+    final bottom = points[mouthIndices[1]];
+    final left = points[mouthIndices[2]];
+    final right = points[mouthIndices[3]];
 
-    final vertical = _distance(pTop, pBottom);
-    final horizontal = _distance(pLeft, pRight);
+    final vertical = _distance(top, bottom);
+    final horizontal = _distance(left, right);
 
     if (horizontal == 0) return 0.0;
     return vertical / horizontal;

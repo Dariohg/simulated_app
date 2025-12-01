@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:google_mlkit_face_mesh_detection/google_mlkit_face_mesh_detection.dart';
-
-// RUTAS CORREGIDAS:
 import '../../core/utils/landmark_indices.dart';
 import '../models/calibration_result.dart';
 
@@ -47,7 +45,7 @@ class CalibrationService {
     _isCalibrated = false;
     _currentStep = CalibrationStep.faceDetection;
     _resetData();
-    _emitProgress(0.0, 'Centra tu rostro en la cámara');
+    _emitProgress(0.0, 'Centra tu rostro en la camara');
   }
 
   void resetCalibration() {
@@ -85,16 +83,17 @@ class CalibrationService {
   void _handleFaceDetection(List<FaceMeshPoint> points) {
     if (points.isNotEmpty) {
       _currentStep = CalibrationStep.lighting;
-      _emitProgress(0.2, 'Verificando iluminación...', shouldVibrate: true);
+      _emitProgress(0.2, 'Verificando iluminacion...', shouldVibrate: true);
     }
   }
 
   void _handleLighting(double brightness) {
     if (brightness > 0.3) {
       _currentStep = CalibrationStep.eyeBaseline;
-      _emitProgress(0.4, 'Mantén los ojos abiertos y mira al frente', shouldVibrate: true);
+      _emitProgress(0.4, 'Manten los ojos abiertos y mira al frente',
+          shouldVibrate: true);
     } else {
-      _emitProgress(0.3, 'Aumenta la iluminación', requiresAction: true);
+      _emitProgress(0.3, 'Aumenta la iluminacion', requiresAction: true);
     }
   }
 
@@ -107,7 +106,8 @@ class CalibrationService {
     if (_openEyesEARs.length >= 30) {
       _finishCalibration();
     } else {
-      _emitProgress(progress, 'Calibrando ojos...', actionMessage: 'Mantén ojos abiertos');
+      _emitProgress(progress, 'Calibrando ojos...',
+          actionMessage: 'Manten ojos abiertos');
     }
   }
 
@@ -158,14 +158,17 @@ class CalibrationService {
       baselineYaw: 0,
     );
 
-    _emitProgress(1.0, '¡Calibración completada!', shouldVibrate: true);
+    _emitProgress(1.0, 'Calibracion completada!', shouldVibrate: true);
   }
 
   void _resetData() {
     _openEyesEARs.clear();
   }
 
-  void _emitProgress(double progress, String message, {bool shouldVibrate = false, bool requiresAction = false, String? actionMessage}) {
+  void _emitProgress(double progress, String message,
+      {bool shouldVibrate = false,
+        bool requiresAction = false,
+        String? actionMessage}) {
     _progressController.add(CalibrationProgress(
       step: _currentStep,
       stepProgress: progress,

@@ -23,13 +23,13 @@ class _HomeViewState extends State<HomeView> {
   }
 
   void _onActivitySelected(ActivityOption activity) {
-    if (_viewModel.currentSession == null) return;
+    if (_viewModel.sessionManager == null) return;
 
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => CalibrationView(
-          session: _viewModel.currentSession!,
+          sessionManager: _viewModel.sessionManager!,
           activityOption: activity,
         ),
       ),
@@ -48,7 +48,19 @@ class _HomeViewState extends State<HomeView> {
           }
 
           if (_viewModel.error != null) {
-            return Center(child: Text("Error: ${_viewModel.error}"));
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text("Error: ${_viewModel.error}"),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => _viewModel.initializeSession(),
+                    child: const Text("Reintentar"),
+                  ),
+                ],
+              ),
+            );
           }
 
           return Padding(
@@ -57,7 +69,16 @@ class _HomeViewState extends State<HomeView> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text("Hola,", style: AppTextStyles.headline1),
-                Text(MockUser.name, style: AppTextStyles.headline6.copyWith(color: AppColors.primary)),
+                Text(
+                  MockUser.name,
+                  style: AppTextStyles.headline6.copyWith(color: AppColors.primary),
+                ),
+                const SizedBox(height: 8),
+                if (_viewModel.sessionId != null)
+                  Text(
+                    "Sesion: ${_viewModel.sessionId!.substring(0, 8)}...",
+                    style: AppTextStyles.body2,
+                  ),
                 const SizedBox(height: 24),
                 const Text("Actividades Disponibles:", style: AppTextStyles.body1),
                 const SizedBox(height: 16),
@@ -79,20 +100,16 @@ class _HomeViewState extends State<HomeView> {
                                 const SizedBox(height: 4),
                                 Text(activity.subtitle!, style: AppTextStyles.body2),
                               ],
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                    color: AppColors.secondary.withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(4)
+                              const SizedBox(height: 4),
+                              Text(
+                                "Tipo: ${activity.activityType}",
+                                style: AppTextStyles.body2.copyWith(
+                                  color: AppColors.primary,
                                 ),
-                                child: Text(
-                                  activity.activityType,
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                                ),
-                              )
+                              ),
                             ],
                           ),
+                          trailing: const Icon(Icons.arrow_forward_ios),
                           onTap: () => _onActivitySelected(activity),
                         ),
                       );
