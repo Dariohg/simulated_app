@@ -1,19 +1,28 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/logic/session_manager.dart';
-import '../../../core/constants/app_colors.dart';
 import '../../../data/models/recommendation_model.dart';
 
 class FloatingMenuOverlay extends StatefulWidget {
   final SessionManager sessionManager;
   final Stream<Recommendation>? recommendationStream;
   final VoidCallback? onVibrateRequested;
+  final VoidCallback? onSettingsRequested;
+  final VoidCallback onToggleCamera;
+  final bool isCameraVisible;
+  final Function(String, String?)? onVideoReceived;
+  final Function(String)? onPauseReceived;
 
   const FloatingMenuOverlay({
     super.key,
     required this.sessionManager,
     this.recommendationStream,
     this.onVibrateRequested,
+    this.onSettingsRequested,
+    required this.onToggleCamera,
+    required this.isCameraVisible,
+    this.onVideoReceived,
+    this.onPauseReceived,
   });
 
   @override
@@ -21,10 +30,11 @@ class FloatingMenuOverlay extends StatefulWidget {
 }
 
 class _FloatingMenuOverlayState extends State<FloatingMenuOverlay> {
+  bool _isMenuOpen = false;
   bool _isPaused = false;
+  Offset _position = const Offset(20, 100);
   StreamSubscription<Recommendation>? _recommendationSubscription;
-  Recommendation? _currentRecommendation;
-  bool _showNotification = false;
+  bool _hasUnreadNotification = false;
 
   @override
   void initState() {
@@ -33,20 +43,22 @@ class _FloatingMenuOverlayState extends State<FloatingMenuOverlay> {
   }
 
   void _setupRecommendationListener() {
-    _recommendationSubscription = widget.recommendationStream?.listen((recommendation) {
-      setState(() {
-        _currentRecommendation = recommendation;
-        _showNotification = true;
-      });
+    _recommendationSubscription =
+        widget.recommendationStream?.listen((recommendation) {
+          if (recommendation.action == 'vibration') {
+            widget.onVibrateRequested?.call();
+          } else {
+            setState(() {
+              _hasUnreadNotification = true;
+            });
 
-      Future.delayed(const Duration(seconds: 5), () {
-        if (mounted) {
-          setState(() {
-            _showNotification = false;
-          });
-        }
-      });
-    });
+            if (recommendation.action == 'pause' && widget.onPauseReceived != null) {
+              widget.onPauseReceived!(recommendation.content?.message ?? 'Descanso sugerido');
+            } else if (recommendation.action == 'instruction' && recommendation.hasVideo && widget.onVideoReceived != null) {
+              widget.onVideoReceived!(recommendation.content!.videoUrl!, recommendation.content?.message);
+            }
+          }
+        });
   }
 
   @override
@@ -68,82 +80,42 @@ class _FloatingMenuOverlayState extends State<FloatingMenuOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Positioned(
-          right: 16,
-          top: 16,
-          child: Row(
-            children: [
-              _buildControlButton(
-                icon: _isPaused ? Icons.play_arrow : Icons.pause,
-                color: _isPaused ? AppColors.iconPlay : AppColors.iconPause,
-                onTap: _togglePause,
-              ),
-            ],
-          ),
+    return Positioned(
+      left: _position.dx,
+      top: _position.dy,
+      child: Draggable(
+        feedback: _buildMenuButton(),
+        childWhenDragging: Container(),
+        onDraggableCanceled: (Velocity velocity, Offset offset) {
+          setState(() {
+            _position = offset;
+          });
+        },
+        child: Column(
+          children: [
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  _isMenuOpen = !_isMenuOpen;
+                  if (_isMenuOpen) _hasUnreadNotification = false;
+                });
+              },
+              child: _buildMenuButton(),
+            ),
+            if (_isMenuOpen) _buildExpandedMenu(),
+          ],
         ),
-        if (_showNotification && _currentRecommendation != null)
-          Positioned(
-            top: 60,
-            left: 16,
-            right: 16,
-            child: _buildNotificationCard(_currentRecommendation!),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildControlButton({
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Colors.black54,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(icon, color: color, size: 24),
       ),
     );
   }
 
-  Widget _buildNotificationCard(Recommendation recommendation) {
-    IconData icon;
-    Color color;
-    String title;
-
-    switch (recommendation.action) {
-      case 'vibration':
-        icon = Icons.vibration;
-        color = Colors.orange;
-        title = 'Atencion';
-        break;
-      case 'instruction':
-        icon = recommendation.hasVideo ? Icons.play_circle : Icons.lightbulb;
-        color = Colors.blue;
-        title = recommendation.hasVideo ? 'Video de ayuda' : 'Sugerencia';
-        break;
-      case 'pause':
-        icon = Icons.coffee;
-        color = Colors.purple;
-        title = 'Descanso sugerido';
-        break;
-      default:
-        icon = Icons.info;
-        color = Colors.grey;
-        title = 'Notificacion';
-    }
-
+  Widget _buildMenuButton() {
     return Container(
-      padding: const EdgeInsets.all(12),
+      width: 50,
+      height: 50,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.blue,
+        shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.3),
@@ -152,46 +124,78 @@ class _FloatingMenuOverlayState extends State<FloatingMenuOverlay> {
           ),
         ],
       ),
-      child: Row(
+      child: Stack(
         children: [
-          Icon(icon, color: Colors.white, size: 28),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-                if (recommendation.hasMessage)
-                  Text(
-                    recommendation.content!.message!,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-              ],
-            ),
+          const Center(
+            child: Icon(Icons.menu, color: Colors.white),
           ),
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _showNotification = false;
-              });
-            },
-            child: const Icon(Icons.close, color: Colors.white70, size: 20),
+          if (_hasUnreadNotification)
+            Positioned(
+              right: 12,
+              top: 12,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpandedMenu() {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 8,
           ),
         ],
       ),
+      child: Column(
+        children: [
+          _buildMenuItem(
+            icon: _isPaused ? Icons.play_arrow : Icons.pause,
+            color: _isPaused ? Colors.green : Colors.orange,
+            onTap: _togglePause,
+          ),
+          _buildMenuItem(
+            icon: widget.isCameraVisible ? Icons.videocam_off : Icons.videocam,
+            color: Colors.blueGrey,
+            onTap: widget.onToggleCamera,
+          ),
+          _buildMenuItem(
+            icon: Icons.settings,
+            color: Colors.grey,
+            onTap: widget.onSettingsRequested ?? () {},
+          ),
+          _buildMenuItem(
+            icon: Icons.notifications,
+            color: Colors.purple,
+            onTap: () {},
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMenuItem({
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return IconButton(
+      icon: Icon(icon, color: color),
+      onPressed: onTap,
     );
   }
 }

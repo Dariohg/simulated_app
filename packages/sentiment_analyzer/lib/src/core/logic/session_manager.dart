@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../data/interfaces/network_interface.dart';
+import '../../data/models/recommendation_model.dart';
 
 enum SessionStatus {
   none,
@@ -53,12 +54,19 @@ class SessionManager extends ChangeNotifier {
 
   Timer? _heartbeatTimer;
 
+  // Stream Controller para las recomendaciones
+  final _recommendationController = StreamController<Recommendation>.broadcast();
+
   String? get sessionId => _sessionId;
   SessionStatus get sessionStatus => _sessionStatus;
   ActivityStatus get activityStatus => _activityStatus;
   ActivityInfo? get currentActivity => _currentActivity;
   String? get currentActivityUuid => _currentActivity?.activityUuid;
   int? get currentExternalActivityId => _currentActivity?.externalActivityId;
+
+  // Getter del Stream requerido por el FloatingMenuOverlay
+  Stream<Recommendation> get recommendationStream => _recommendationController.stream;
+
   bool get hasActiveSession =>
       _sessionId != null && _sessionStatus == SessionStatus.active;
   bool get hasActiveActivity =>
@@ -71,6 +79,13 @@ class SessionManager extends ChangeNotifier {
     this.disabilityType = 'none',
     this.cognitiveAnalysisEnabled = true,
   });
+
+  // Metodo para emitir recomendaciones (util para conectar con el WebSocket service externamente)
+  void emitRecommendation(Recommendation recommendation) {
+    if (!_recommendationController.isClosed) {
+      _recommendationController.add(recommendation);
+    }
+  }
 
   Future<bool> initializeSession() async {
     try {
@@ -477,6 +492,7 @@ class SessionManager extends ChangeNotifier {
   @override
   void dispose() {
     _heartbeatTimer?.cancel();
+    _recommendationController.close();
     super.dispose();
   }
 }
