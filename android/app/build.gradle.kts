@@ -6,7 +6,8 @@ plugins {
 
 android {
     namespace = "com.example.simulated_app"
-    // Volvemos a 34 o 35, que son estables. No uses 36 todavía.
+    // Volvemos a 34 o 35, que son estables.
+    // No uses 36 todavía.
     compileSdk = 36
 
     // Elimina la línea ndkVersion si no tienes la 27 instalada específicamente,
@@ -14,12 +15,14 @@ android {
     // ndkVersion = "26.1.10909125"
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        // CAMBIO: Actualizado a VERSION_17 para evitar advertencias de "obsolete"
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        // CAMBIO: Actualizado a "17" para coincidir con compileOptions
+        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     defaultConfig {
@@ -40,7 +43,8 @@ android {
         }
     }
 
-    // MANTÉN ESTO: Es vital para que no se eliminen las librerías de TFLite al compilar
+    // MANTÉN ESTO: Es vital para que no se eliminen
+    // las librerías de TFLite al compilar
     packaging {
         jniLibs {
             pickFirsts += setOf(

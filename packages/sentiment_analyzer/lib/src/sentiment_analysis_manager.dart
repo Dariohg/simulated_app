@@ -117,6 +117,12 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager>
     final sessionId = widget.sessionManager.sessionId;
     final activityUuid = widget.sessionManager.currentActivityUuid;
 
+    // Si estamos en modo offline, no intentamos conectar el WebSocket
+    if (widget.sessionManager.isOffline) {
+      debugPrint('[SentimentManager] Modo Offline activo. No se conectará el WebSocket.');
+      return;
+    }
+
     if (sessionId == null) {
       debugPrint('[SentimentManager] No hay session_id, no se conecta WS');
       return;
@@ -191,6 +197,15 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager>
   }
 
   void _sendCurrentFrame() {
+    // Si estamos offline, solo notificamos cambios locales de estado a la UI
+    // pero no enviamos nada al WebSocket.
+    if (widget.sessionManager.isOffline) {
+      if (_viewModel.currentState != null && !widget.isPaused) {
+        widget.onStateChanged?.call(_viewModel.currentState!);
+      }
+      return;
+    }
+
     if (!_monitoringWs.isConnected) return;
     if (_viewModel.currentState == null) return;
     if (widget.isPaused) return;

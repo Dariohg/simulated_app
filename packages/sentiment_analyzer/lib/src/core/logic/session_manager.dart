@@ -49,11 +49,9 @@ class SessionManager extends ChangeNotifier {
   SessionStatus _sessionStatus = SessionStatus.none;
   ActivityStatus _activityStatus = ActivityStatus.none;
   ActivityInfo? _currentActivity;
+  bool _isOffline = false;
 
   Timer? _heartbeatTimer;
-
-  // Variables de reconexión ELIMINADAS para evitar warnings de código muerto
-  // ya que desactivamos el heartbeat loop.
 
   String? get sessionId => _sessionId;
   SessionStatus get sessionStatus => _sessionStatus;
@@ -65,6 +63,7 @@ class SessionManager extends ChangeNotifier {
       _sessionId != null && _sessionStatus == SessionStatus.active;
   bool get hasActiveActivity =>
       _currentActivity != null && _activityStatus == ActivityStatus.inProgress;
+  bool get isOffline => _isOffline;
 
   SessionManager({
     required this.network,
@@ -76,6 +75,7 @@ class SessionManager extends ChangeNotifier {
   Future<bool> initializeSession() async {
     try {
       debugPrint('[SessionManager] Creando sesion para usuario $userId');
+      _isOffline = false;
 
       final response = await network.createSession(
         userId: userId,
@@ -85,20 +85,26 @@ class SessionManager extends ChangeNotifier {
 
       _sessionId = response['session_id'];
       _sessionStatus = SessionStatus.active;
-      // _reconnectAttempts = 0; // Eliminado
 
       debugPrint('[SessionManager] Sesion creada: $_sessionId');
       notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('[SessionManager] Error creando sesion: $e');
-      return false;
+      debugPrint('[SessionManager] Error creando sesion: $e. Entrando en MODO OFFLINE.');
+
+      _isOffline = true;
+      _sessionId = 'offline_session_${DateTime.now().millisecondsSinceEpoch}';
+      _sessionStatus = SessionStatus.active;
+
+      notifyListeners();
+      return true;
     }
   }
 
   Future<bool> recoverSession(String existingSessionId) async {
     try {
       debugPrint('[SessionManager] Recuperando sesion: $existingSessionId');
+      _isOffline = false;
 
       final response = await network.getSession(existingSessionId);
       final status = response['status'] as String?;
@@ -152,6 +158,24 @@ class SessionManager extends ChangeNotifier {
       return false;
     }
 
+    if (_isOffline) {
+      debugPrint('[SessionManager] Iniciando actividad en MODO OFFLINE');
+      final offlineUuid = 'offline_activity_${DateTime.now().millisecondsSinceEpoch}';
+
+      _currentActivity = ActivityInfo(
+        activityUuid: offlineUuid,
+        externalActivityId: externalActivityId,
+        title: title,
+        subtitle: subtitle,
+        content: content,
+        activityType: activityType,
+        startedAt: DateTime.now(),
+      );
+      _activityStatus = ActivityStatus.inProgress;
+      notifyListeners();
+      return true;
+    }
+
     try {
       debugPrint(
           '[SessionManager] Iniciando actividad: $title (ID: $externalActivityId)');
@@ -186,8 +210,19 @@ class SessionManager extends ChangeNotifier {
 
       return false;
     } catch (e) {
-      debugPrint('[SessionManager] Error iniciando actividad: $e');
-      return false;
+      debugPrint('[SessionManager] Error iniciando actividad: $e. Pasando a offline local.');
+      _currentActivity = ActivityInfo(
+        activityUuid: 'offline_fallback_${DateTime.now().millisecondsSinceEpoch}',
+        externalActivityId: externalActivityId,
+        title: title,
+        subtitle: subtitle,
+        content: content,
+        activityType: activityType,
+        startedAt: DateTime.now(),
+      );
+      _activityStatus = ActivityStatus.inProgress;
+      notifyListeners();
+      return true;
     }
   }
 
@@ -196,6 +231,13 @@ class SessionManager extends ChangeNotifier {
       debugPrint(
           '[SessionManager] No hay sesion/actividad activa para completar');
       return false;
+    }
+
+    if (_isOffline) {
+      _activityStatus = ActivityStatus.completed;
+      _currentActivity = null;
+      notifyListeners();
+      return true;
     }
 
     try {
@@ -219,7 +261,10 @@ class SessionManager extends ChangeNotifier {
       return false;
     } catch (e) {
       debugPrint('[SessionManager] Error completando actividad: $e');
-      return false;
+      _activityStatus = ActivityStatus.completed;
+      _currentActivity = null;
+      notifyListeners();
+      return true;
     }
   }
 
@@ -228,6 +273,13 @@ class SessionManager extends ChangeNotifier {
       debugPrint(
           '[SessionManager] No hay sesion/actividad activa para abandonar');
       return false;
+    }
+
+    if (_isOffline) {
+      _activityStatus = ActivityStatus.abandoned;
+      _currentActivity = null;
+      notifyListeners();
+      return true;
     }
 
     try {
@@ -250,7 +302,10 @@ class SessionManager extends ChangeNotifier {
       return false;
     } catch (e) {
       debugPrint('[SessionManager] Error abandonando actividad: $e');
-      return false;
+      _activityStatus = ActivityStatus.abandoned;
+      _currentActivity = null;
+      notifyListeners();
+      return true;
     }
   }
 
@@ -258,6 +313,12 @@ class SessionManager extends ChangeNotifier {
     if (_currentActivity == null) {
       debugPrint('[SessionManager] No hay actividad activa para pausar');
       return false;
+    }
+
+    if (_isOffline) {
+      _activityStatus = ActivityStatus.paused;
+      notifyListeners();
+      return true;
     }
 
     try {
@@ -278,7 +339,9 @@ class SessionManager extends ChangeNotifier {
       return false;
     } catch (e) {
       debugPrint('[SessionManager] Error pausando actividad: $e');
-      return false;
+      _activityStatus = ActivityStatus.paused;
+      notifyListeners();
+      return true;
     }
   }
 
@@ -286,6 +349,12 @@ class SessionManager extends ChangeNotifier {
     if (_currentActivity == null) {
       debugPrint('[SessionManager] No hay actividad para reanudar');
       return false;
+    }
+
+    if (_isOffline) {
+      _activityStatus = ActivityStatus.inProgress;
+      notifyListeners();
+      return true;
     }
 
     try {
@@ -306,12 +375,20 @@ class SessionManager extends ChangeNotifier {
       return false;
     } catch (e) {
       debugPrint('[SessionManager] Error reanudando actividad: $e');
-      return false;
+      _activityStatus = ActivityStatus.inProgress;
+      notifyListeners();
+      return true;
     }
   }
 
   Future<bool> pauseSession() async {
     if (_sessionId == null) return false;
+
+    if (_isOffline) {
+      _sessionStatus = SessionStatus.paused;
+      notifyListeners();
+      return true;
+    }
 
     try {
       debugPrint('[SessionManager] Pausando sesion');
@@ -324,12 +401,20 @@ class SessionManager extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint('[SessionManager] Error pausando sesion: $e');
-      return false;
+      _sessionStatus = SessionStatus.paused;
+      notifyListeners();
+      return true;
     }
   }
 
   Future<bool> resumeSession() async {
     if (_sessionId == null) return false;
+
+    if (_isOffline) {
+      _sessionStatus = SessionStatus.active;
+      notifyListeners();
+      return true;
+    }
 
     try {
       debugPrint('[SessionManager] Reanudando sesion');
@@ -342,12 +427,23 @@ class SessionManager extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint('[SessionManager] Error reanudando sesion: $e');
-      return false;
+      _sessionStatus = SessionStatus.active;
+      notifyListeners();
+      return true;
     }
   }
 
   Future<bool> finalizeSession() async {
     if (_sessionId == null) return false;
+
+    if (_isOffline) {
+      _sessionStatus = SessionStatus.finalized;
+      _sessionId = null;
+      _currentActivity = null;
+      _activityStatus = ActivityStatus.none;
+      notifyListeners();
+      return true;
+    }
 
     try {
       debugPrint('[SessionManager] Finalizando sesion');
@@ -369,7 +465,12 @@ class SessionManager extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint('[SessionManager] Error finalizando sesion: $e');
-      return false;
+      _sessionStatus = SessionStatus.finalized;
+      _sessionId = null;
+      _currentActivity = null;
+      _activityStatus = ActivityStatus.none;
+      notifyListeners();
+      return true;
     }
   }
 
