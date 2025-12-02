@@ -50,7 +50,6 @@ class SessionManager extends ChangeNotifier {
   SessionStatus _sessionStatus = SessionStatus.none;
   ActivityStatus _activityStatus = ActivityStatus.none;
   ActivityInfo? _currentActivity;
-  Timer? _heartbeatTimer;
   bool _isOffline = false;
 
   final StreamController<Recommendation> _recommendationController =
@@ -85,8 +84,6 @@ class SessionManager extends ChangeNotifier {
 
       _sessionId = response['session_id'] as String;
       _sessionStatus = SessionStatus.active;
-
-      _startHeartbeat();
 
       debugPrint('[SessionManager] Sesion creada: $_sessionId');
       notifyListeners();
@@ -317,20 +314,16 @@ class SessionManager extends ChangeNotifier {
     }
 
     try {
-      debugPrint('[SessionManager] Pausando actividad: ${_currentActivity!.activityUuid}');
+      debugPrint('[SessionManager] Pausando actividad');
 
-      final response = await network.pauseActivity(
+      await network.pauseActivity(
         activityUuid: _currentActivity!.activityUuid,
       );
+      _activityStatus = ActivityStatus.paused;
 
-      if (response['status'] == 'pausada') {
-        _activityStatus = ActivityStatus.paused;
-        debugPrint('[SessionManager] Actividad pausada');
-        notifyListeners();
-        return true;
-      }
-
-      return false;
+      debugPrint('[SessionManager] Actividad pausada');
+      notifyListeners();
+      return true;
     } catch (e) {
       debugPrint('[SessionManager] Error pausando actividad: $e');
       _activityStatus = ActivityStatus.paused;
@@ -352,20 +345,16 @@ class SessionManager extends ChangeNotifier {
     }
 
     try {
-      debugPrint('[SessionManager] Reanudando actividad: ${_currentActivity!.activityUuid}');
+      debugPrint('[SessionManager] Reanudando actividad');
 
-      final response = await network.resumeActivity(
+      await network.resumeActivity(
         activityUuid: _currentActivity!.activityUuid,
       );
+      _activityStatus = ActivityStatus.inProgress;
 
-      if (response['status'] == 'en_progreso') {
-        _activityStatus = ActivityStatus.inProgress;
-        debugPrint('[SessionManager] Actividad reanudada');
-        notifyListeners();
-        return true;
-      }
-
-      return false;
+      debugPrint('[SessionManager] Actividad reanudada');
+      notifyListeners();
+      return true;
     } catch (e) {
       debugPrint('[SessionManager] Error reanudando actividad: $e');
       _activityStatus = ActivityStatus.inProgress;
@@ -473,22 +462,8 @@ class SessionManager extends ChangeNotifier {
     }
   }
 
-  void _startHeartbeat() {
-    _heartbeatTimer?.cancel();
-    _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
-      if (_sessionId != null && !_isOffline) {
-        try {
-          await network.sendHeartbeat(_sessionId!);
-        } catch (e) {
-          debugPrint('[SessionManager] Error enviando heartbeat: $e');
-        }
-      }
-    });
-  }
-
   @override
   void dispose() {
-    _heartbeatTimer?.cancel();
     _recommendationController.close();
     super.dispose();
   }
