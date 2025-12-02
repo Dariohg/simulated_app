@@ -50,28 +50,20 @@ class SessionManager extends ChangeNotifier {
   SessionStatus _sessionStatus = SessionStatus.none;
   ActivityStatus _activityStatus = ActivityStatus.none;
   ActivityInfo? _currentActivity;
+  Timer? _heartbeatTimer;
   bool _isOffline = false;
 
-  Timer? _heartbeatTimer;
-
-  // Stream Controller para las recomendaciones
-  final _recommendationController = StreamController<Recommendation>.broadcast();
+  final StreamController<Recommendation> _recommendationController =
+  StreamController<Recommendation>.broadcast();
 
   String? get sessionId => _sessionId;
   SessionStatus get sessionStatus => _sessionStatus;
   ActivityStatus get activityStatus => _activityStatus;
   ActivityInfo? get currentActivity => _currentActivity;
-  String? get currentActivityUuid => _currentActivity?.activityUuid;
-  int? get currentExternalActivityId => _currentActivity?.externalActivityId;
-
-  // Getter del Stream requerido por el FloatingMenuOverlay
-  Stream<Recommendation> get recommendationStream => _recommendationController.stream;
-
-  bool get hasActiveSession =>
-      _sessionId != null && _sessionStatus == SessionStatus.active;
-  bool get hasActiveActivity =>
-      _currentActivity != null && _activityStatus == ActivityStatus.inProgress;
+  bool get hasActiveSession => _sessionId != null && _sessionStatus == SessionStatus.active;
+  bool get hasActiveActivity => _currentActivity != null && _activityStatus == ActivityStatus.inProgress;
   bool get isOffline => _isOffline;
+  Stream<Recommendation> get recommendationStream => _recommendationController.stream;
 
   SessionManager({
     required this.network,
@@ -80,16 +72,9 @@ class SessionManager extends ChangeNotifier {
     this.cognitiveAnalysisEnabled = true,
   });
 
-  // Metodo para emitir recomendaciones (util para conectar con el WebSocket service externamente)
-  void emitRecommendation(Recommendation recommendation) {
-    if (!_recommendationController.isClosed) {
-      _recommendationController.add(recommendation);
-    }
-  }
-
   Future<bool> initializeSession() async {
     try {
-      debugPrint('[SessionManager] Creando sesion para usuario $userId');
+      debugPrint('[SessionManager] Creando sesion para usuario: $userId');
       _isOffline = false;
 
       final response = await network.createSession(
@@ -98,8 +83,10 @@ class SessionManager extends ChangeNotifier {
         cognitiveAnalysisEnabled: cognitiveAnalysisEnabled,
       );
 
-      _sessionId = response['session_id'];
+      _sessionId = response['session_id'] as String;
       _sessionStatus = SessionStatus.active;
+
+      _startHeartbeat();
 
       debugPrint('[SessionManager] Sesion creada: $_sessionId');
       notifyListeners();
@@ -145,9 +132,7 @@ class SessionManager extends ChangeNotifier {
           externalActivityId: currentActivityData['external_activity_id'],
           title: currentActivityData['title'] ?? '',
           activityType: 'recovered',
-          startedAt:
-          DateTime.tryParse(currentActivityData['started_at'] ?? '') ??
-              DateTime.now(),
+          startedAt: DateTime.tryParse(currentActivityData['started_at'] ?? '') ?? DateTime.now(),
         );
         _activityStatus = ActivityStatus.inProgress;
       }
@@ -192,8 +177,7 @@ class SessionManager extends ChangeNotifier {
     }
 
     try {
-      debugPrint(
-          '[SessionManager] Iniciando actividad: $title (ID: $externalActivityId)');
+      debugPrint('[SessionManager] Iniciando actividad: $title (ID: $externalActivityId)');
 
       final response = await network.startActivity(
         sessionId: _sessionId!,
@@ -243,8 +227,7 @@ class SessionManager extends ChangeNotifier {
 
   Future<bool> completeActivity({required Map<String, dynamic> feedback}) async {
     if (_sessionId == null || _currentActivity == null) {
-      debugPrint(
-          '[SessionManager] No hay sesion/actividad activa para completar');
+      debugPrint('[SessionManager] No hay sesion/actividad activa para completar');
       return false;
     }
 
@@ -256,8 +239,7 @@ class SessionManager extends ChangeNotifier {
     }
 
     try {
-      debugPrint(
-          '[SessionManager] Completando actividad: ${_currentActivity!.activityUuid}');
+      debugPrint('[SessionManager] Completando actividad: ${_currentActivity!.activityUuid}');
 
       final response = await network.completeActivity(
         activityUuid: _currentActivity!.activityUuid,
@@ -268,7 +250,7 @@ class SessionManager extends ChangeNotifier {
         _activityStatus = ActivityStatus.completed;
         _currentActivity = null;
 
-        debugPrint('[SessionManager] Actividad completada exitosamente');
+        debugPrint('[SessionManager] Actividad completada exitosamente. Session sigue activa: $_sessionId');
         notifyListeners();
         return true;
       }
@@ -285,8 +267,7 @@ class SessionManager extends ChangeNotifier {
 
   Future<bool> abandonActivity() async {
     if (_sessionId == null || _currentActivity == null) {
-      debugPrint(
-          '[SessionManager] No hay sesion/actividad activa para abandonar');
+      debugPrint('[SessionManager] No hay sesion/actividad activa para abandonar');
       return false;
     }
 
@@ -298,8 +279,7 @@ class SessionManager extends ChangeNotifier {
     }
 
     try {
-      debugPrint(
-          '[SessionManager] Abandonando actividad: ${_currentActivity!.activityUuid}');
+      debugPrint('[SessionManager] Abandonando actividad: ${_currentActivity!.activityUuid}');
 
       final response = await network.abandonActivity(
         activityUuid: _currentActivity!.activityUuid,
@@ -337,8 +317,7 @@ class SessionManager extends ChangeNotifier {
     }
 
     try {
-      debugPrint(
-          '[SessionManager] Pausando actividad: ${_currentActivity!.activityUuid}');
+      debugPrint('[SessionManager] Pausando actividad: ${_currentActivity!.activityUuid}');
 
       final response = await network.pauseActivity(
         activityUuid: _currentActivity!.activityUuid,
@@ -373,8 +352,7 @@ class SessionManager extends ChangeNotifier {
     }
 
     try {
-      debugPrint(
-          '[SessionManager] Reanudando actividad: ${_currentActivity!.activityUuid}');
+      debugPrint('[SessionManager] Reanudando actividad: ${_currentActivity!.activityUuid}');
 
       final response = await network.resumeActivity(
         activityUuid: _currentActivity!.activityUuid,
@@ -487,6 +465,25 @@ class SessionManager extends ChangeNotifier {
       notifyListeners();
       return true;
     }
+  }
+
+  void emitRecommendation(Recommendation recommendation) {
+    if (!_recommendationController.isClosed) {
+      _recommendationController.add(recommendation);
+    }
+  }
+
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
+      if (_sessionId != null && !_isOffline) {
+        try {
+          await network.sendHeartbeat(_sessionId!);
+        } catch (e) {
+          debugPrint('[SessionManager] Error enviando heartbeat: $e');
+        }
+      }
+    });
   }
 
   @override

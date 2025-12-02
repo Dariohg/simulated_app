@@ -81,7 +81,11 @@ class _ActivityViewState extends State<ActivityView> {
 
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const SessionSummaryView()),
+        MaterialPageRoute(
+          builder: (context) => SessionSummaryView(
+            sessionManager: widget.sessionManager,
+          ),
+        ),
             (route) => false,
       );
     }
@@ -105,8 +109,8 @@ class _ActivityViewState extends State<ActivityView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(title ?? 'Video de ayuda'),
-        content: Text('URL del video: $url'),
+        title: Text(title ?? 'Video recomendado'),
+        content: Text('URL: $url'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -150,53 +154,38 @@ class _ActivityViewState extends State<ActivityView> {
     if (_error != null) {
       return Scaffold(
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('Error: $_error'),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-                child: const Text('Volver'),
-              ),
-            ],
-          ),
+          child: Text('Error: $_error'),
         ),
       );
     }
 
-    return WillPopScope(
-      onWillPop: () async {
-        await _closeActivity();
-        return false;
-      },
-      child: Scaffold(
-        body: Stack(
+    return Scaffold(
+      body: SafeArea(
+        child: Stack(
           children: [
             Column(
               children: [
                 _buildHeader(),
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 100),
+                    padding: const EdgeInsets.all(16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           widget.activityOption.title,
                           style: const TextStyle(
-                            fontWeight: FontWeight.bold,
                             fontSize: 24,
-                            color: Colors.black87,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                         if (widget.activityOption.subtitle != null) ...[
                           const SizedBox(height: 8),
                           Text(
                             widget.activityOption.subtitle!,
-                            style: const TextStyle(
-                              color: Colors.grey,
+                            style: TextStyle(
                               fontSize: 16,
+                              color: Colors.grey[600],
                             ),
                           ),
                         ],

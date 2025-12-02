@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:web_socket_channel/status.dart' as ws_status;
 import '../models/recommendation_model.dart';
 
 enum WebSocketStatus {
@@ -21,33 +20,26 @@ class MonitoringWebSocketService extends ChangeNotifier {
 
   WebSocketChannel? _channel;
   WebSocketStatus _status = WebSocketStatus.disconnected;
+  StreamSubscription? _streamSubscription;
+  Timer? _pingTimer;
+  Timer? _reconnectTimer;
+
+  int _reconnectAttempts = 0;
+  static const int maxReconnectAttempts = 5;
+  static const Duration reconnectDelay = Duration(seconds: 2);
+  static const Duration pingInterval = Duration(seconds: 15);
 
   String? _currentSessionId;
   String? _currentActivityUuid;
   int? _userId;
   int? _externalActivityId;
-
-  StreamSubscription? _subscription;
-  Timer? _reconnectTimer;
-  Timer? _pingTimer;
-
-  int _reconnectAttempts = 0;
-  static const int maxReconnectAttempts = 5;
-  static const Duration reconnectDelay = Duration(seconds: 2);
-  static const Duration pingInterval = Duration(seconds: 30);
-  static const Duration handshakeTimeout = Duration(seconds: 10);
-
   bool _isPaused = false;
 
   final StreamController<Recommendation> _recommendationController =
   StreamController<Recommendation>.broadcast();
 
   WebSocketStatus get status => _status;
-  bool get isConnected => _status == WebSocketStatus.ready;
-  bool get isConnecting =>
-      _status == WebSocketStatus.connecting ||
-          _status == WebSocketStatus.handshaking;
-  Stream<Recommendation> get recommendations => _recommendationController.stream;
+  Stream<Recommendation> get recommendationStream => _recommendationController.stream;
   String? get currentActivityUuid => _currentActivityUuid;
   bool get isPaused => _isPaused;
 
@@ -62,8 +54,7 @@ class MonitoringWebSocketService extends ChangeNotifier {
     required int userId,
     required int externalActivityId,
   }) async {
-    if (_status == WebSocketStatus.ready &&
-        _currentActivityUuid == activityUuid) {
+    if (_status == WebSocketStatus.ready && _currentActivityUuid == activityUuid) {
       debugPrint('[MonitoringWS] Ya conectado a actividad: $activityUuid');
       return true;
     }
@@ -94,8 +85,7 @@ class MonitoringWebSocketService extends ChangeNotifier {
 
       _setupListeners();
 
-      final handshakeSuccess =
-      await _performHandshake(userId, externalActivityId);
+      final handshakeSuccess = await _performHandshake(userId, externalActivityId);
 
       if (!handshakeSuccess) {
         debugPrint('[MonitoringWS] Handshake fallido');
@@ -121,7 +111,7 @@ class MonitoringWebSocketService extends ChangeNotifier {
   void pauseTransmission() {
     if (!_isPaused) {
       _isPaused = true;
-      debugPrint('[MonitoringWS] Transmisión pausada');
+      debugPrint('[MonitoringWS] Transmision pausada');
       notifyListeners();
     }
   }
@@ -129,7 +119,7 @@ class MonitoringWebSocketService extends ChangeNotifier {
   void resumeTransmission() {
     if (_isPaused) {
       _isPaused = false;
-      debugPrint('[MonitoringWS] Transmisión reanudada');
+      debugPrint('[MonitoringWS] Transmision reanudada');
       notifyListeners();
     }
   }
@@ -153,63 +143,66 @@ class MonitoringWebSocketService extends ChangeNotifier {
     StreamSubscription? handshakeSubscription;
     Timer? timeoutTimer;
 
-    try {
-      timeoutTimer = Timer(handshakeTimeout, () {
-        if (!completer.isCompleted) {
-          debugPrint('[MonitoringWS] Timeout en handshake');
-          completer.complete(false);
-        }
-      });
-
-      handshakeSubscription = _channel?.stream.listen((message) {
+    handshakeSubscription = _channel!.stream.listen(
+          (message) {
         try {
-          final data = jsonDecode(message as String) as Map<String, dynamic>;
-
-          if (data['type'] == 'handshake_ack' && data['status'] == 'ready') {
-            debugPrint('[MonitoringWS] Handshake exitoso');
-            if (!completer.isCompleted) {
-              completer.complete(true);
-            }
-          } else if (data.containsKey('error')) {
-            debugPrint('[MonitoringWS] Error en handshake: ${data['error']}');
-            if (!completer.isCompleted) {
-              completer.complete(false);
-            }
+          final data = jsonDecode(message);
+          if (data['type'] == 'handshake_ack') {
+            timeoutTimer?.cancel();
+            handshakeSubscription?.cancel();
+            completer.complete(true);
           }
         } catch (e) {
-          debugPrint('[MonitoringWS] Error parseando respuesta de handshake: $e');
+          debugPrint('[MonitoringWS] Error parseando handshake: $e');
         }
-      });
+      },
+      onError: (error) {
+        timeoutTimer?.cancel();
+        handshakeSubscription?.cancel();
+        if (!completer.isCompleted) {
+          completer.complete(false);
+        }
+      },
+    );
 
+    timeoutTimer = Timer(const Duration(seconds: 5), () {
+      handshakeSubscription?.cancel();
+      if (!completer.isCompleted) {
+        debugPrint('[MonitoringWS] Timeout esperando handshake_ack');
+        completer.complete(false);
+      }
+    });
+
+    try {
       final handshakeMessage = jsonEncode({
         'type': 'handshake',
         'user_id': userId,
         'external_activity_id': externalActivityId,
       });
 
-      debugPrint('[MonitoringWS] Enviando handshake: $handshakeMessage');
-      _channel?.sink.add(handshakeMessage);
-
+      _channel!.sink.add(handshakeMessage);
       return await completer.future;
-    } finally {
-      timeoutTimer?.cancel();
-      await handshakeSubscription?.cancel();
+    } catch (e) {
+      timeoutTimer.cancel();
+      handshakeSubscription.cancel();
+      debugPrint('[MonitoringWS] Error enviando handshake: $e');
+      return false;
     }
   }
 
   void _setupListeners() {
-    _subscription?.cancel();
-
-    _subscription = _channel?.stream.listen(
+    _streamSubscription?.cancel();
+    _streamSubscription = _channel!.stream.listen(
       _handleMessage,
       onError: _handleError,
       onDone: _handleDone,
+      cancelOnError: false,
     );
   }
 
   void _handleMessage(dynamic message) {
     try {
-      final data = jsonDecode(message as String) as Map<String, dynamic>;
+      final data = jsonDecode(message);
       final type = data['type'] as String?;
 
       if (type == 'handshake_ack' || type == 'pong') {
@@ -263,8 +256,7 @@ class MonitoringWebSocketService extends ChangeNotifier {
     notifyListeners();
 
     final delay = reconnectDelay * _reconnectAttempts;
-    debugPrint(
-        '[MonitoringWS] Reconectando en ${delay.inSeconds}s (intento $_reconnectAttempts)');
+    debugPrint('[MonitoringWS] Reconectando en ${delay.inSeconds}s (intento $_reconnectAttempts)');
 
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(delay, () {
@@ -307,6 +299,7 @@ class MonitoringWebSocketService extends ChangeNotifier {
 
     try {
       frameData['metadata'] ??= {};
+      frameData['metadata']['timestamp'] = DateTime.now().toIso8601String();
       frameData['metadata']['user_id'] = _userId;
       frameData['metadata']['session_id'] = _currentSessionId;
       frameData['metadata']['external_activity_id'] = _externalActivityId;
@@ -322,22 +315,18 @@ class MonitoringWebSocketService extends ChangeNotifier {
     debugPrint('[MonitoringWS] Desconectando...');
 
     _pingTimer?.cancel();
-    _pingTimer = null;
-
     _reconnectTimer?.cancel();
-    _reconnectTimer = null;
+    _streamSubscription?.cancel();
 
-    await _subscription?.cancel();
-    _subscription = null;
-
-    try {
-      await _channel?.sink.close(ws_status.goingAway);
-    } catch (e) {
-      debugPrint('[MonitoringWS] Error cerrando canal: $e');
-    }
+    await _channel?.sink.close();
     _channel = null;
 
+    _currentSessionId = null;
     _currentActivityUuid = null;
+    _userId = null;
+    _externalActivityId = null;
+    _reconnectAttempts = 0;
+
     _status = WebSocketStatus.disconnected;
     notifyListeners();
   }

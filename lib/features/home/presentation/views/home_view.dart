@@ -55,10 +55,62 @@ class _HomeViewState extends State<HomeView> {
     }
   }
 
+  Future<void> _confirmEndSession() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Finalizar sesión'),
+        content: const Text('¿Deseas cerrar tu sesión de estudio? Esto finalizará todas las actividades.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Finalizar', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _viewModel.finalizeSession();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sesión finalizada correctamente')),
+        );
+      }
+    }
+  }
+
+  IconData _getIconForActivityType(String activityType) {
+    switch (activityType) {
+      case 'LECTURA':
+        return Icons.book;
+      case 'LOGICA':
+        return Icons.calculate;
+      case 'ATENCION':
+        return Icons.center_focus_strong;
+      default:
+        return Icons.assignment;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Monitor Cognitivo")),
+      appBar: AppBar(
+        title: const Text("Monitor Cognitivo"),
+        actions: [
+          if (_viewModel.sessionManager != null)
+            IconButton(
+              icon: const Icon(Icons.logout),
+              onPressed: _confirmEndSession,
+              tooltip: 'Finalizar sesión',
+            ),
+        ],
+      ),
       body: ListenableBuilder(
         listenable: _viewModel,
         builder: (context, _) {
@@ -95,41 +147,48 @@ class _HomeViewState extends State<HomeView> {
                 const SizedBox(height: 8),
                 if (_viewModel.sessionId != null)
                   Text(
-                    "Sesion: ${_viewModel.sessionId!.substring(0, 8)}...",
+                    "Sesión: ${_viewModel.sessionId!.substring(0, 8)}...",
                     style: AppTextStyles.body2,
                   ),
                 const SizedBox(height: 24),
                 const Text("Actividades Disponibles:", style: AppTextStyles.body1),
                 const SizedBox(height: 16),
                 Expanded(
-                  child: ListView.separated(
+                  child: GridView.builder(
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 16,
+                      childAspectRatio: 1.2,
+                    ),
                     itemCount: MockActivities.list.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final activity = MockActivities.list[index];
                       return Card(
-                        elevation: 2,
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.all(16),
-                          title: Text(activity.title, style: AppTextStyles.headline6),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (activity.subtitle != null) ...[
-                                const SizedBox(height: 4),
-                                Text(activity.subtitle!, style: AppTextStyles.body2),
-                              ],
-                              const SizedBox(height: 4),
-                              Text(
-                                "Tipo: ${activity.activityType}",
-                                style: AppTextStyles.body2.copyWith(
+                        elevation: 4,
+                        child: InkWell(
+                          onTap: () => _onActivitySelected(activity),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  _getIconForActivityType(activity.activityType),
+                                  size: 48,
                                   color: AppColors.primary,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 12),
+                                Text(
+                                  activity.title,
+                                  textAlign: TextAlign.center,
+                                  style: AppTextStyles.body1,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
                           ),
-                          trailing: const Icon(Icons.arrow_forward_ios),
-                          onTap: () => _onActivitySelected(activity),
                         ),
                       );
                     },

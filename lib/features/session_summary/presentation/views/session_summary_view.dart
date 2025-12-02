@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:sentiment_analyzer/sentiment_analyzer.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 
 class SessionSummaryView extends StatelessWidget {
-  const SessionSummaryView({super.key});
+  final SessionManager sessionManager;
+
+  const SessionSummaryView({
+    super.key,
+    required this.sessionManager,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async => false,
+    return PopScope(
+      canPop: false,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Resumen'),
@@ -47,7 +53,7 @@ class SessionSummaryView extends StatelessWidget {
                       backgroundColor: AppColors.primary,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child: const Text('Volver al inicio'),
+                    child: const Text('Continuar con otra actividad'),
                   ),
                 ),
               ],
