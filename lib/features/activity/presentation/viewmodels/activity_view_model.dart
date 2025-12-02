@@ -5,12 +5,15 @@ import '../../../../core/models/session_model.dart';
 import '../../../../core/models/activity_model.dart';
 import '../../../../core/models/biometric_frame_model.dart';
 import '../../../../core/mocks/mock_activities.dart';
+import '../../../../core/mocks/mock_user.dart';
+import '../../../../core/config/env_config.dart';
 
 class ActivityViewModel extends ChangeNotifier {
   final AppNetworkService _httpService = AppNetworkService();
   final SessionModel session;
   final ActivityOption activityOption;
   final CalibrationStorage _calibrationStorage = CalibrationStorage();
+  late final MonitoringWebSocketService _wsService;
 
   ActivityModel? _activeActivity;
   bool _isInitializing = true;
@@ -28,7 +31,12 @@ class ActivityViewModel extends ChangeNotifier {
   bool _needsCalibration = false;
   bool get needsCalibration => _needsCalibration;
 
-  ActivityViewModel({required this.session, required this.activityOption});
+  ActivityViewModel({required this.session, required this.activityOption}) {
+    _wsService = MonitoringWebSocketService(
+      gatewayUrl: EnvConfig.apiGatewayUrl,
+      apiKey: EnvConfig.apiToken,
+    );
+  }
 
   Future<void> initialize() async {
     _isInitializing = true;
@@ -43,16 +51,13 @@ class ActivityViewModel extends ChangeNotifier {
     if (savedCalibration != null && savedCalibration.isSuccessful) {
       _calibration = savedCalibration;
       _needsCalibration = false;
-      debugPrint('[ActivityViewModel] Calibracion encontrada. No se requiere recalibrar.');
     } else {
       _calibration = null;
       _needsCalibration = true;
-      debugPrint('[ActivityViewModel] Calibracion NO encontrada o invalida. Se requiere calibrar.');
     }
   }
 
   Future<void> onCalibrationCompleted() async {
-    debugPrint('[ActivityViewModel] Calibracion completada en UI. Verificando almacenamiento...');
     await _checkCalibration();
     notifyListeners();
   }
@@ -75,6 +80,13 @@ class ActivityViewModel extends ChangeNotifier {
           externalActivityId: activityOption.externalActivityId,
           status: 'active',
         );
+
+        await _wsService.connect(
+          sessionId: session.id,
+          activityUuid: _activeActivity!.activityUuid,
+          userId: MockUser.id,
+          externalActivityId: activityOption.externalActivityId,
+        );
       }
     } catch (e) {
       _error = e.toString();
@@ -95,6 +107,15 @@ class ActivityViewModel extends ChangeNotifier {
       rostroDetectado: rawData['rostro_detectado'] ?? false,
     );
 
+    _wsService.sendFrame({
+      'timestamp': frame.timestamp,
+      'emocion_principal': frame.emocionPrincipal,
+      'desglose_emociones': frame.desgloseEmociones,
+      'atencion': frame.atencion,
+      'somnolencia': frame.somnolencia,
+      'rostro_detectado': frame.rostroDetectado,
+    });
+
     _analyzeAndSend(frame);
   }
 
@@ -111,10 +132,17 @@ class ActivityViewModel extends ChangeNotifier {
 
   Future<void> stopActivity() async {
     if (_activeActivity != null) {
+      await _wsService.disconnect();
       await _httpService.completeActivity(
         activityUuid: _activeActivity!.activityUuid,
         feedback: {},
       );
     }
+  }
+
+  @override
+  void dispose() {
+    _wsService.dispose();
+    super.dispose();
   }
 }

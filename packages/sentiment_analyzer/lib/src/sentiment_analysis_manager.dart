@@ -43,7 +43,8 @@ class SentimentAnalysisManager extends StatefulWidget {
   });
 
   @override
-  State<SentimentAnalysisManager> createState() => _SentimentAnalysisManagerState();
+  State<SentimentAnalysisManager> createState() =>
+      _SentimentAnalysisManagerState();
 }
 
 class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
@@ -51,6 +52,7 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
   late MonitoringWebSocketService _websocketService;
   bool _isCameraVisible = true;
   Timer? _frameTimer;
+  Timer? _retryConnectionTimer;
   int _frameCount = 0;
   int _wsNotReadyCount = 0;
 
@@ -60,7 +62,6 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
 
     debugPrint('[SentimentAnalysisManager] ===== INICIANDO =====');
 
-    // Inicializar ViewModel
     _viewModel = AnalysisViewModel(
       cameraService: CameraService(),
       faceMeshService: FaceMeshService(),
@@ -70,7 +71,6 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
       _viewModel.applyCalibration(widget.calibration!);
     }
 
-    // Inicializar WebSocket
     _websocketService = MonitoringWebSocketService(
       gatewayUrl: widget.gatewayUrl,
       apiKey: widget.apiKey,
@@ -78,13 +78,10 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
 
     debugPrint('[SentimentAnalysisManager] WebSocket service creado');
 
-    // Conectar WebSocket
-    _connectWebSocket();
+    _initiateConnection();
 
-    // Escuchar cambios de estado
     _viewModel.addListener(_onStateChanged);
 
-    // Timer para enviar frames periódicamente
     _frameTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
       _sendCurrentFrame();
     });
@@ -92,33 +89,49 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
     debugPrint('[SentimentAnalysisManager] Frame timer iniciado');
   }
 
-  Future<void> _connectWebSocket() async {
+  void _initiateConnection() {
+    _connectWebSocket().then((success) {
+      if (!success) {
+        debugPrint(
+            '[SentimentAnalysisManager] Conexion inicial fallida. Programando reintento...');
+        _scheduleRetry();
+      }
+    });
+  }
+
+  void _scheduleRetry() {
+    _retryConnectionTimer?.cancel();
+    _retryConnectionTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      debugPrint('[SentimentAnalysisManager] Reintentando conexion...');
+      _initiateConnection();
+    });
+  }
+
+  Future<bool> _connectWebSocket() async {
     debugPrint('[SentimentAnalysisManager] === INICIO CONEXION WEBSOCKET ===');
+
+    if (_websocketService.status == WebSocketStatus.ready ||
+        _websocketService.status == WebSocketStatus.connected) {
+      return true;
+    }
 
     final activityUuid = widget.sessionManager.currentActivity?.activityUuid;
     final sessionId = widget.sessionManager.sessionId;
 
-    debugPrint('[SentimentAnalysisManager] activityUuid: $activityUuid');
-    debugPrint('[SentimentAnalysisManager] sessionId: $sessionId');
-    debugPrint('[SentimentAnalysisManager] userId: ${widget.sessionManager.userId}');
-
     if (activityUuid == null || sessionId == null) {
-      debugPrint('[SentimentAnalysisManager] ERROR: FALTA DATOS - No se puede conectar');
-      widget.onConnectionStatusChanged?.call(false);
-      return;
+      debugPrint(
+          '[SentimentAnalysisManager] ERROR: FALTA DATOS - Esperando datos de sesion...');
+      return false;
     }
 
-    final externalActivityId = widget.sessionManager.currentActivity?.externalActivityId;
-    debugPrint('[SentimentAnalysisManager] externalActivityId: $externalActivityId');
+    final externalActivityId =
+        widget.sessionManager.currentActivity?.externalActivityId;
 
     if (externalActivityId == null) {
       debugPrint('[SentimentAnalysisManager] ERROR: FALTA externalActivityId');
-      widget.onConnectionStatusChanged?.call(false);
-      return;
+      return false;
     }
-
-    debugPrint('[SentimentAnalysisManager] Llamando a websocketService.connect()...');
-    debugPrint('[SentimentAnalysisManager] Gateway URL: ${widget.gatewayUrl}');
 
     final success = await _websocketService.connect(
       sessionId: sessionId,
@@ -127,14 +140,15 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
       externalActivityId: externalActivityId,
     );
 
-    debugPrint('[SentimentAnalysisManager] Resultado conexion: $success');
-
     if (success) {
       debugPrint('[SentimentAnalysisManager] OK: WebSocket conectado exitosamente');
       widget.onConnectionStatusChanged?.call(true);
+      return true;
     } else {
-      debugPrint('[SentimentAnalysisManager] ERROR: No se pudo conectar WebSocket');
+      debugPrint(
+          '[SentimentAnalysisManager] ERROR: No se pudo conectar WebSocket');
       widget.onConnectionStatusChanged?.call(false);
+      return false;
     }
   }
 
@@ -143,60 +157,55 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
   }
 
   void _sendCurrentFrame() {
-    // Log del estado del WebSocket
     if (_websocketService.status != WebSocketStatus.ready) {
-      // Solo loguear cada 50 intentos para no saturar
       if (_wsNotReadyCount % 50 == 0) {
-        debugPrint('[SentimentAnalysisManager] PAUSED: WebSocket no esta listo: ${_websocketService.status}');
+        debugPrint(
+            '[SentimentAnalysisManager] PAUSED: WebSocket no esta listo: ${_websocketService.status}');
       }
       _wsNotReadyCount++;
       return;
     }
 
     if (widget.isPaused || _websocketService.isPaused) {
-      debugPrint('[SentimentAnalysisManager] PAUSED: Transmision pausada');
       return;
     }
 
     final state = _viewModel.currentState;
     if (state == null) {
-      debugPrint('[SentimentAnalysisManager] WARNING: State es null, no hay frame para enviar');
       return;
     }
 
-    // Log cada 25 frames (cada ~5 segundos) para no saturar
     _frameCount++;
 
     if (_frameCount % 25 == 0) {
       debugPrint('[SentimentAnalysisManager] SENDING: Frame #$_frameCount');
-      debugPrint('[SentimentAnalysisManager]   - Emocion: ${state.emotion}');
-      debugPrint('[SentimentAnalysisManager]   - Estado: ${state.finalState}');
-      debugPrint('[SentimentAnalysisManager]   - Rostro detectado: ${state.faceDetected}');
-      debugPrint('[SentimentAnalysisManager]   - Mirando pantalla: ${state.attention?.isLookingAtScreen}');
     }
 
-    // Construir el frame con la estructura esperada por el backend
-    final frameData = {
-      'analisis_sentimiento': {
-        'emocion_principal': {
+    // CORRECCIÓN: Tipado explícito para evitar errores de subtipos en el mapa
+    final Map<String, dynamic> frameData = {
+      'analisis_sentimiento': <String, dynamic>{
+        'emocion_principal': <String, dynamic>{
           'nombre': state.emotion,
           'confianza': state.confidence,
           'estado_cognitivo': state.finalState,
         },
-        'desglose_emociones': state.emotionScores?.entries.map((e) => {
+        'desglose_emociones': state.emotionScores?.entries
+            .map((e) => <String, dynamic>{
           'emocion': e.key,
           'confianza': e.value * 100,
-        }).toList() ?? [],
+        })
+            .toList() ??
+            [],
       },
-      'datos_biometricos': {
-        'atencion': {
+      'datos_biometricos': <String, dynamic>{
+        'atencion': <String, dynamic>{
           'mirando_pantalla': state.attention?.isLookingAtScreen ?? false,
-          'orientacion_cabeza': {
+          'orientacion_cabeza': <String, dynamic>{
             'pitch': state.attention?.pitch ?? 0.0,
             'yaw': state.attention?.yaw ?? 0.0,
           },
         },
-        'somnolencia': {
+        'somnolencia': <String, dynamic>{
           'esta_durmiendo': state.drowsiness?.isDrowsy ?? false,
           'apertura_ojos_ear': state.drowsiness?.ear ?? 0.0,
         },
@@ -205,10 +214,6 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
     };
 
     _websocketService.sendFrame(frameData);
-
-    if (_frameCount % 25 == 0) {
-      debugPrint('[SentimentAnalysisManager] OK: Frame enviado al WebSocket');
-    }
   }
 
   @override
@@ -230,6 +235,7 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
   void dispose() {
     debugPrint('[SentimentAnalysisManager] Disposing...');
     _frameTimer?.cancel();
+    _retryConnectionTimer?.cancel();
     _viewModel.removeListener(_onStateChanged);
     _websocketService.disconnect();
     _viewModel.dispose();
