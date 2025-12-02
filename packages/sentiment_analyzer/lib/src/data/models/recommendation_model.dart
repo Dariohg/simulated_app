@@ -14,10 +14,10 @@ class RecommendationContent {
   factory RecommendationContent.fromJson(Map<String, dynamic>? json) {
     if (json == null) return RecommendationContent();
     return RecommendationContent(
-      type: json['type'] as String?,
-      message: json['message'] as String?,
-      videoUrl: json['video_url'] as String?,
-      title: json['title'] as String?,
+      type: json['type']?.toString(),
+      message: json['message']?.toString(),
+      videoUrl: json['video_url']?.toString(),
+      title: json['title']?.toString(),
     );
   }
 }
@@ -36,9 +36,9 @@ class VibrationPattern {
   factory VibrationPattern.fromJson(Map<String, dynamic>? json) {
     if (json == null) return VibrationPattern();
     return VibrationPattern(
-      duration: json['duration'] as int? ?? 500,
-      intensity: json['intensity'] as int? ?? 100,
-      pattern: (json['pattern'] as List<dynamic>?)?.cast<int>(),
+      duration: _parseIntSafeDefault(json['duration'], 500),
+      intensity: _parseIntSafeDefault(json['intensity'], 100),
+      pattern: _parseIntListSafe(json['pattern']),
     );
   }
 }
@@ -61,11 +61,11 @@ class RecommendationMetadata {
   factory RecommendationMetadata.fromJson(Map<String, dynamic>? json) {
     if (json == null) return RecommendationMetadata();
     return RecommendationMetadata(
-      cognitiveEvent: json['cognitive_event'] as String?,
-      precision: (json['precision'] as num?)?.toDouble(),
-      confidence: (json['confidence'] as num?)?.toDouble(),
-      topic: json['topic'] as String?,
-      contentType: json['content_type'] as String?,
+      cognitiveEvent: json['cognitive_event']?.toString(),
+      precision: _parseDoubleSafe(json['precision']),
+      confidence: _parseDoubleSafe(json['confidence']),
+      topic: json['topic']?.toString(),
+      contentType: json['content_type']?.toString(),
     );
   }
 }
@@ -91,13 +91,19 @@ class Recommendation {
 
   factory Recommendation.fromJson(Map<String, dynamic> json) {
     return Recommendation(
-      sessionId: json['session_id'] as String? ?? '',
-      userId: json['user_id'] as int?,
-      action: json['action'] as String? ?? 'unknown',
-      content: RecommendationContent.fromJson(json['content'] as Map<String, dynamic>?),
-      vibration: VibrationPattern.fromJson(json['vibration'] as Map<String, dynamic>?),
-      metadata: RecommendationMetadata.fromJson(json['metadata'] as Map<String, dynamic>?),
-      timestamp: json['timestamp'] as String?,
+      sessionId: json['session_id']?.toString() ?? '',
+      userId: _parseIntSafeNullable(json['user_id']),
+      action: json['action']?.toString() ?? 'unknown',
+      content: RecommendationContent.fromJson(
+        json['content'] is Map<String, dynamic> ? json['content'] : null,
+      ),
+      vibration: VibrationPattern.fromJson(
+        json['vibration'] is Map<String, dynamic> ? json['vibration'] : null,
+      ),
+      metadata: RecommendationMetadata.fromJson(
+        json['metadata'] is Map<String, dynamic> ? json['metadata'] : null,
+      ),
+      timestamp: json['timestamp']?.toString(),
     );
   }
 
@@ -106,4 +112,40 @@ class Recommendation {
   bool get isPause => action == 'pause';
   bool get hasVideo => content?.videoUrl != null && content!.videoUrl!.isNotEmpty;
   bool get hasMessage => content?.message != null && content!.message!.isNotEmpty;
+}
+
+// Helper functions para parsing seguro
+int _parseIntSafeDefault(dynamic value, int defaultValue) {
+  if (value == null) return defaultValue;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? defaultValue;
+  return defaultValue;
+}
+
+int? _parseIntSafeNullable(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value);
+  return null;
+}
+
+double? _parseDoubleSafe(dynamic value) {
+  if (value == null) return null;
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value);
+  return null;
+}
+
+List<int>? _parseIntListSafe(dynamic value) {
+  if (value == null) return null;
+  if (value is! List) return null;
+  return value.map((e) {
+    if (e is int) return e;
+    if (e is num) return e.toInt();
+    if (e is String) return int.tryParse(e) ?? 0;
+    return 0;
+  }).toList();
 }

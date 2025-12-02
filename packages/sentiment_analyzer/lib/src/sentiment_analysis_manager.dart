@@ -55,6 +55,7 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
   Timer? _retryConnectionTimer;
   int _frameCount = 0;
   int _wsNotReadyCount = 0;
+  StreamSubscription? _recommendationSubscription;
 
   @override
   void initState() {
@@ -78,6 +79,9 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
 
     debugPrint('[SentimentAnalysisManager] WebSocket service creado');
 
+    // Conectar el stream de recomendaciones del WebSocket al SessionManager
+    _setupRecommendationForwarding();
+
     _initiateConnection();
 
     _viewModel.addListener(_onStateChanged);
@@ -87,6 +91,18 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
     });
 
     debugPrint('[SentimentAnalysisManager] Frame timer iniciado');
+  }
+
+  void _setupRecommendationForwarding() {
+    _recommendationSubscription = _websocketService.recommendationStream.listen(
+          (recommendation) {
+        debugPrint('[SentimentAnalysisManager] Recomendacion recibida del WS, reenviando a SessionManager');
+        widget.sessionManager.emitRecommendation(recommendation);
+      },
+      onError: (error) {
+        debugPrint('[SentimentAnalysisManager] Error en stream de recomendaciones: $error');
+      },
+    );
   }
 
   void _initiateConnection() {
@@ -160,7 +176,7 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
     if (_websocketService.status != WebSocketStatus.ready) {
       if (_wsNotReadyCount % 50 == 0) {
         debugPrint(
-            '[SentimentAnalysisManager] PAUSED: WebSocket no esta listo: ${_websocketService.status}');
+            '[SentimentAnalysisManager] WS no ready (status: ${_websocketService.status}), frame ignorado');
       }
       _wsNotReadyCount++;
       return;
@@ -169,6 +185,8 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
     if (widget.isPaused || _websocketService.isPaused) {
       return;
     }
+
+    _wsNotReadyCount = 0;
 
     final state = _viewModel.currentState;
     if (state == null) {
@@ -181,7 +199,6 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
       debugPrint('[SentimentAnalysisManager] SENDING: Frame #$_frameCount');
     }
 
-    // CORRECCIÓN: Tipado explícito para evitar errores de subtipos en el mapa
     final Map<String, dynamic> frameData = {
       'analisis_sentimiento': <String, dynamic>{
         'emocion_principal': <String, dynamic>{
@@ -236,6 +253,7 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
     debugPrint('[SentimentAnalysisManager] Disposing...');
     _frameTimer?.cancel();
     _retryConnectionTimer?.cancel();
+    _recommendationSubscription?.cancel();
     _viewModel.removeListener(_onStateChanged);
     _websocketService.disconnect();
     _viewModel.dispose();
@@ -268,6 +286,7 @@ class _SentimentAnalysisManagerState extends State<SentimentAnalysisManager> {
             isCameraVisible: _isCameraVisible,
             onVideoReceived: widget.onVideoReceived,
             onPauseReceived: widget.onPauseReceived,
+            onInstructionReceived: widget.onInstructionReceived,
           ),
         ],
       ),

@@ -12,6 +12,7 @@ class FloatingMenuOverlay extends StatefulWidget {
   final bool isCameraVisible;
   final Function(String, String?)? onVideoReceived;
   final Function(String)? onPauseReceived;
+  final Function(String)? onInstructionReceived;
 
   const FloatingMenuOverlay({
     super.key,
@@ -23,6 +24,7 @@ class FloatingMenuOverlay extends StatefulWidget {
     required this.isCameraVisible,
     this.onVideoReceived,
     this.onPauseReceived,
+    this.onInstructionReceived,
   });
 
   @override
@@ -35,6 +37,7 @@ class _FloatingMenuOverlayState extends State<FloatingMenuOverlay> {
   Offset _position = const Offset(20, 100);
   StreamSubscription<Recommendation>? _recommendationSubscription;
   bool _hasUnreadNotification = false;
+  String? _lastMessage;
 
   @override
   void initState() {
@@ -43,22 +46,70 @@ class _FloatingMenuOverlayState extends State<FloatingMenuOverlay> {
   }
 
   void _setupRecommendationListener() {
-    _recommendationSubscription =
-        widget.recommendationStream?.listen((recommendation) {
-          if (recommendation.action == 'vibration') {
-            widget.onVibrateRequested?.call();
-          } else {
-            setState(() {
-              _hasUnreadNotification = true;
-            });
+    debugPrint('[FloatingMenuOverlay] Configurando listener de recomendaciones');
+    debugPrint('[FloatingMenuOverlay] Stream es null: ${widget.recommendationStream == null}');
 
-            if (recommendation.action == 'pause' && widget.onPauseReceived != null) {
-              widget.onPauseReceived!(recommendation.content?.message ?? 'Descanso sugerido');
-            } else if (recommendation.action == 'instruction' && recommendation.hasVideo && widget.onVideoReceived != null) {
-              widget.onVideoReceived!(recommendation.content!.videoUrl!, recommendation.content?.message);
+    _recommendationSubscription = widget.recommendationStream?.listen(
+          (recommendation) {
+        debugPrint('[FloatingMenuOverlay] Recomendacion recibida: ${recommendation.action}');
+        debugPrint('[FloatingMenuOverlay] Mensaje: ${recommendation.content?.message}');
+
+        if (recommendation.action == 'vibration') {
+          widget.onVibrateRequested?.call();
+        } else {
+          setState(() {
+            _hasUnreadNotification = true;
+            _lastMessage = recommendation.content?.message;
+          });
+
+          if (recommendation.action == 'pause') {
+            final message = recommendation.content?.message ?? 'Descanso sugerido';
+            widget.onPauseReceived?.call(message);
+            _showNotificationSnackBar(message, Colors.orange);
+          } else if (recommendation.action == 'instruction') {
+            final message = recommendation.content?.message ?? '';
+
+            if (recommendation.hasVideo && widget.onVideoReceived != null) {
+              widget.onVideoReceived!(
+                recommendation.content!.videoUrl!,
+                recommendation.content?.message,
+              );
+            } else if (message.isNotEmpty) {
+              // Mostrar instrucción de texto
+              widget.onInstructionReceived?.call(message);
+              _showNotificationSnackBar(message, Colors.blue);
             }
           }
-        });
+        }
+      },
+      onError: (error) {
+        debugPrint('[FloatingMenuOverlay] Error en stream: $error');
+      },
+    );
+  }
+
+  void _showNotificationSnackBar(String message, Color backgroundColor) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: const TextStyle(fontSize: 14),
+        ),
+        backgroundColor: backgroundColor,
+        duration: const Duration(seconds: 5),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+        action: SnackBarAction(
+          label: 'OK',
+          textColor: Colors.white,
+          onPressed: () {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -131,14 +182,15 @@ class _FloatingMenuOverlayState extends State<FloatingMenuOverlay> {
           ),
           if (_hasUnreadNotification)
             Positioned(
-              right: 12,
-              top: 12,
+              right: 8,
+              top: 8,
               child: Container(
-                width: 10,
-                height: 10,
-                decoration: const BoxDecoration(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
                   color: Colors.red,
                   shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
                 ),
               ),
             ),
@@ -180,8 +232,12 @@ class _FloatingMenuOverlayState extends State<FloatingMenuOverlay> {
           ),
           _buildMenuItem(
             icon: Icons.notifications,
-            color: Colors.purple,
-            onTap: () {},
+            color: _hasUnreadNotification ? Colors.red : Colors.purple,
+            onTap: () {
+              if (_lastMessage != null) {
+                _showNotificationSnackBar(_lastMessage!, Colors.blue);
+              }
+            },
           ),
         ],
       ),
