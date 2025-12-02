@@ -132,11 +132,20 @@ class ActivityViewModel extends ChangeNotifier {
 
   Future<void> stopActivity() async {
     if (_activeActivity != null) {
-      await _wsService.disconnect();
-      await _httpService.completeActivity(
-        activityUuid: _activeActivity!.activityUuid,
-        feedback: {},
-      );
+      // CORRECCIÓN: Primero completamos vía HTTP para asegurar el estado en BD
+      try {
+        await _httpService.completeActivity(
+          activityUuid: _activeActivity!.activityUuid,
+          feedback: {},
+        );
+      } catch (e) {
+        debugPrint('[ActivityViewModel] Error completando actividad: $e');
+      } finally {
+        // CORRECCIÓN: Después desconectamos el WebSocket.
+        // El backend recibirá este evento, pero como la actividad ya está
+        // 'completada', no la marcará como 'abandonada'.
+        await _wsService.disconnect();
+      }
     }
   }
 
