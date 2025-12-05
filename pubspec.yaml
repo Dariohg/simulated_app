@@ -1,5 +1,5 @@
 name: simulated_app
-description: Una app que simula la integración del paquete sentiment_analyzer.
+description: Una app que simula la integracion del paquete sentiment_analyzer.
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -10,9 +10,15 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
+  flutter_dotenv: ^5.1.0
+  vibration: ^3.1.0
+  dio: ^5.8.0
+  provider: ^6.1.5
+  camera: ^0.11.0
+  shared_preferences: ^2.2.0
+  permission_handler: ^11.3.0
 
-  # Esta es la línea más importante.
-  # Debe estar alineada con 'flutter:' y 'cupertino_icons:'
+
   sentiment_analyzer:
     path: packages/sentiment_analyzer
 
@@ -23,3 +29,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - packages/sentiment_analyzer/assets/emotion_model.tflite
+    - .env

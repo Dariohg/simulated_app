@@ -1,28 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:simulated_app/home_screen.dart';
-import 'package:simulated_app/lesson_screen.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'core/theme/app_theme.dart';
+import 'features/home/presentation/views/home_view.dart';
 
-void main() {
-  runApp(const SimulatedApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
+  runApp(const MainApp());
 }
 
-class SimulatedApp extends StatelessWidget {
-  const SimulatedApp({super.key});
+class MainApp extends StatelessWidget {
+  const MainApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'App Educativa (Simulada)',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        brightness: Brightness.light, // Un tema claro para diferenciarla
-        scaffoldBackgroundColor: Colors.grey[100],
-      ),
-      // Definimos nuestras rutas de navegación
+      title: 'Monitoring App',
+      theme: AppTheme.lightTheme,
+      debugShowCheckedModeBanner: false,
       initialRoute: '/',
       routes: {
-        '/': (context) => const HomeScreen(),
-        '/lesson': (context) => const LessonScreen(),
+        '/': (context) => const HomeView(),
       },
     );
   }
