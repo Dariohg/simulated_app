@@ -39,14 +39,10 @@ class NotificationModal extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(
-          Icons.info_outline,
-          size: 48,
-          color: Colors.blue,
-        ),
+        const Icon(Icons.info_outline, size: 48, color: Colors.blue),
         const SizedBox(height: 16),
         Text(
-          event.triggers.displayText ?? '',
+          event.displayText ?? '',
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 16),
         ),
@@ -70,14 +66,10 @@ class NotificationModal extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(
-          Icons.play_circle_outline,
-          size: 48,
-          color: Colors.green,
-        ),
+        const Icon(Icons.play_circle_outline, size: 48, color: Colors.green),
         const SizedBox(height: 16),
         Text(
-          event.triggers.displayText ?? 'Video disponible',
+          event.displayText ?? 'Video disponible',
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
@@ -97,7 +89,7 @@ class NotificationModal extends StatelessWidget {
             Expanded(
               child: ElevatedButton(
                 onPressed: () {
-                  final videoUrl = event.triggers.videoUrl;
+                  final videoUrl = event.videoUrl;
                   if (videoUrl != null) {
                     notificationService.markAsRead();
                     Navigator.pop(context);

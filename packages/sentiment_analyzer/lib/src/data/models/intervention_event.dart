@@ -1,74 +1,53 @@
-class InterventionTriggers {
+class InterventionEvent {
+  final String packetId;
+  final String type; // 'intervention' o 'haptic_nudge'
+  final DateTime timestamp;
+
+  // Triggers (Acciones unificadas)
   final String? videoUrl;
   final String? displayText;
   final bool vibrationEnabled;
 
-  InterventionTriggers({
-    this.videoUrl,
-    this.displayText,
-    required this.vibrationEnabled,
-  });
-
-  factory InterventionTriggers.fromJson(Map<String, dynamic> json) {
-    return InterventionTriggers(
-      videoUrl: json['video_url'] as String?,
-      displayText: json['display_text'] as String?,
-      vibrationEnabled: json['vibration_enabled'] as bool? ?? false,
-    );
-  }
-}
-
-class InterventionDetails {
-  final String metricName;
-  final double value;
-  final double confidence;
-  final int durationMs;
-
-  InterventionDetails({
-    required this.metricName,
-    required this.value,
-    required this.confidence,
-    required this.durationMs,
-  });
-
-  factory InterventionDetails.fromJson(Map<String, dynamic> json) {
-    return InterventionDetails(
-      metricName: json['metric_name'] as String,
-      value: (json['value'] as num).toDouble(),
-      confidence: (json['confidence'] as num).toDouble(),
-      durationMs: json['duration_ms'] as int,
-    );
-  }
-}
-
-class InterventionEvent {
-  final String packetId;
-  final DateTime timestamp;
-  final String type;
-  final InterventionTriggers triggers;
-  final InterventionDetails details;
+  // Detalles (Métricas opcionales)
+  final String? metricName;
+  final double? value;
 
   InterventionEvent({
     required this.packetId,
-    required this.timestamp,
     required this.type,
-    required this.triggers,
-    required this.details,
+    required this.timestamp,
+    this.videoUrl,
+    this.displayText,
+    this.vibrationEnabled = false,
+    this.metricName,
+    this.value,
   });
 
   factory InterventionEvent.fromJson(Map<String, dynamic> json) {
+    // 1. Extraer triggers con seguridad
+    final triggers = json['triggers'] as Map<String, dynamic>? ?? {};
+
+    // 2. Extraer details con seguridad
+    final details = json['details'] as Map<String, dynamic>? ?? {};
+
     return InterventionEvent(
-      packetId: json['packet_id'] as String,
-      timestamp: DateTime.parse(json['timestamp'] as String),
-      type: json['type'] as String,
-      triggers: InterventionTriggers.fromJson(json['triggers'] as Map<String, dynamic>),
-      details: InterventionDetails.fromJson(json['details'] as Map<String, dynamic>),
+      packetId: json['packet_id'] as String? ?? 'unknown',
+      type: json['type'] as String? ?? 'intervention',
+      timestamp: json['timestamp'] != null
+          ? DateTime.tryParse(json['timestamp'].toString()) ?? DateTime.now()
+          : DateTime.now(),
+
+      // Lógica de Triggers Simplificada
+      videoUrl: triggers['video_url'] as String?,
+      displayText: triggers['display_text'] as String?,
+      vibrationEnabled: triggers['vibration_enabled'] as bool? ?? false,
+
+      metricName: details['metric_name'] as String?,
+      value: (details['value'] as num?)?.toDouble(),
     );
   }
 
-  bool get isIntervention => type == 'intervention';
-  bool get isHapticNudge => type == 'haptic_nudge';
-  bool get hasVideo => triggers.videoUrl != null;
-  bool get hasText => triggers.displayText != null;
-  bool get hasVibration => triggers.vibrationEnabled;
+  // Helpers para la UI
+  bool get hasVideo => videoUrl != null && videoUrl!.isNotEmpty;
+  bool get hasText => displayText != null && displayText!.isNotEmpty;
 }

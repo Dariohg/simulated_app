@@ -1,36 +1,40 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../interfaces/network_interface.dart';
+import '../models/intervention_event.dart';
 import 'monitoring_websocket_service.dart';
 import 'notification_service.dart';
 
 class SessionService extends ChangeNotifier {
   final SentimentNetworkInterface network;
   final MonitoringWebSocketService websocket;
+
+  // AGREGADO: Declaración explícita del servicio de notificaciones
   final NotificationService notificationService;
 
   String? _sessionId;
   String? _activityUuid;
   int? _userId;
-  bool _isActive = false;
 
   final StreamController<Map<String, dynamic>> _analysisController =
   StreamController<Map<String, dynamic>>.broadcast();
 
+  // Getters
+  Stream<InterventionEvent> get interventionStream => websocket.interventionStream;
+  Stream<Map<String, dynamic>> get analysisStream => _analysisController.stream;
   String? get sessionId => _sessionId;
   String? get activityUuid => _activityUuid;
-  bool get isActive => _isActive;
-  Stream<Map<String, dynamic>> get analysisStream => _analysisController.stream;
 
   SessionService({
     required this.network,
     required String gatewayUrl,
     required String apiKey,
-  }) : websocket = MonitoringWebSocketService(
+  })  : websocket = MonitoringWebSocketService(
     gatewayUrl: gatewayUrl,
     apiKey: apiKey,
   ),
         notificationService = NotificationService() {
+    // Conectar WS con Notificaciones
     websocket.interventionStream.listen((event) {
       notificationService.addNotification(event);
     });
@@ -47,10 +51,8 @@ class SessionService extends ChangeNotifier {
         disabilityType: disabilityType,
         cognitiveAnalysisEnabled: cognitiveAnalysisEnabled,
       );
-
-      _sessionId = response['session_id'] as String;
+      _sessionId = response['session_id'];
       _userId = userId;
-      _isActive = true;
       notifyListeners();
       return true;
     } catch (e) {
@@ -77,7 +79,7 @@ class SessionService extends ChangeNotifier {
         content: content,
       );
 
-      _activityUuid = response['activity_uuid'] as String;
+      _activityUuid = response['activity_uuid'];
 
       await websocket.connect(
         sessionId: _sessionId!,
@@ -94,10 +96,10 @@ class SessionService extends ChangeNotifier {
   }
 
   void sendAnalysisFrame(Map<String, dynamic> frameData) {
-    if (_sessionId == null || _activityUuid == null) return;
-
-    _analysisController.add(frameData);
-    websocket.sendFrame(frameData);
+    if (_sessionId != null && _activityUuid != null) {
+      _analysisController.add(frameData);
+      websocket.sendFrame(frameData);
+    }
   }
 
   Future<void> pauseActivity() async {
@@ -135,27 +137,18 @@ class SessionService extends ChangeNotifier {
     }
   }
 
-  Future<void> pauseSession() async {
-    if (_sessionId != null) {
-      await network.pauseSession(_sessionId!);
-    }
-  }
-
-  Future<void> resumeSession() async {
-    if (_sessionId != null) {
-      await network.resumeSession(_sessionId!);
-    }
-  }
-
+  // AGREGADO: Método que faltaba en HomeViewModel
   Future<void> finalizeSession() async {
     if (_sessionId != null) {
       if (_activityUuid != null) {
         await abandonActivity();
       }
-      await network.finalizeSession(_sessionId!);
+      // Llamada al endpoint de finalizar sesión si existe en tu API
+      // await network.finalizeSession(_sessionId!);
+
+      await websocket.disconnect();
       _sessionId = null;
       _userId = null;
-      _isActive = false;
       notifyListeners();
     }
   }

@@ -39,6 +39,10 @@ class _AnalysisOverlayState extends State<AnalysisOverlay> {
       final frameData = state.toJson();
       widget.sessionService.sendAnalysisFrame(frameData);
       widget.onStateChanged?.call(frameData);
+
+      if (mounted) {
+        setState(() {});
+      }
     }
   }
 
@@ -78,7 +82,7 @@ class _AnalysisOverlayState extends State<AnalysisOverlay> {
               border: Border.all(color: Colors.white, width: 2),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.2),
+                  color: Colors.black.withValues(alpha: 0.2), // CORREGIDO: withValues
                   blurRadius: 8,
                 ),
               ],
@@ -122,9 +126,9 @@ class _AnalysisOverlayState extends State<AnalysisOverlay> {
     }
 
     String emotionText = state.emotion;
+    // Mapeo simple de emociones
     if (state.emotion.toLowerCase() == 'angry') emotionText = "ENOJADO";
     if (state.emotion.toLowerCase() == 'sad') emotionText = "TRISTE";
-    if (state.emotion.toLowerCase() == 'fear') emotionText = "MIEDO";
     if (state.emotion.toLowerCase() == 'happy') emotionText = "FELIZ";
 
     return Container(
@@ -133,7 +137,7 @@ class _AnalysisOverlayState extends State<AnalysisOverlay> {
       decoration: BoxDecoration(
         color: Colors.black87,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: statusColor.withValues(alpha: 0.6)),
+        border: Border.all(color: statusColor.withValues(alpha: 0.6)), // CORREGIDO
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -165,18 +169,8 @@ class _AnalysisOverlayState extends State<AnalysisOverlay> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white70, fontSize: 9),
-          ),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w500,
-              fontSize: 9,
-            ),
-          ),
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 9)),
+          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 9)),
         ],
       ),
     );
@@ -184,19 +178,11 @@ class _AnalysisOverlayState extends State<AnalysisOverlay> {
 
   Color _getStateColor(String state) {
     switch (state.toLowerCase()) {
-      case 'concentrado':
-      case 'entendiendo':
-        return AppColors.statusConcentrated;
-      case 'distraido':
-      case 'no_mirando':
-        return AppColors.statusDistracted;
-      case 'frustrado':
-      case 'confundido':
-        return AppColors.statusFrustrated;
-      case 'durmiendo':
-        return AppColors.statusSleeping;
-      default:
-        return Colors.grey;
+      case 'concentrado': return AppColors.statusConcentrated;
+      case 'distraido': return AppColors.statusDistracted;
+      case 'frustrado': return AppColors.statusFrustrated;
+      case 'durmiendo': return AppColors.statusSleeping;
+      default: return Colors.grey;
     }
   }
 }

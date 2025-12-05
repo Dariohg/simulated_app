@@ -1,21 +1,20 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:vibration/vibration.dart';
 import 'package:sentiment_analyzer/sentiment_analyzer.dart';
+import '../../../../core/mocks/mock_activities.dart';
 import '../../../session_summary/presentation/views/session_summary_view.dart';
 
 class ActivityView extends StatefulWidget {
   final SessionService sessionService;
+  final ActivityOption activityOption;
   final int userId;
-  final int externalActivityId;
-  final String title;
-  final String activityType;
 
   const ActivityView({
     super.key,
     required this.sessionService,
+    required this.activityOption,
     required this.userId,
-    required this.externalActivityId,
-    required this.title,
-    required this.activityType,
   });
 
   @override
@@ -23,12 +22,40 @@ class ActivityView extends StatefulWidget {
 }
 
 class _ActivityViewState extends State<ActivityView> {
-  bool _isVideoPlaying = false;
-  bool _isCameraVisible = true;
   bool _isFinishing = false;
+  bool _isCameraVisible = true;
+  StreamSubscription? _interventionSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupInterventions();
+  }
+
+  void _setupInterventions() {
+    // Escuchamos eventos del WebSocket
+    _interventionSubscription = widget.sessionService.interventionStream.listen((event) {
+      if (!mounted) return;
+
+      if (event.vibrationEnabled) {
+        Vibration.vibrate(duration: 500);
+      }
+
+      // Notificación visual discreta (SnackBar)
+      if ((event.videoUrl != null && event.videoUrl!.isNotEmpty) ||
+          (event.displayText != null && event.displayText!.isNotEmpty)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Nueva recomendación disponible. Revisa la campana."),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    });
+  }
 
   void _handleVideoRequest(String videoUrl) async {
-    setState(() => _isVideoPlaying = true);
     await widget.sessionService.pauseActivity();
 
     if (!mounted) return;
@@ -38,15 +65,12 @@ class _ActivityViewState extends State<ActivityView> {
       barrierDismissible: false,
       builder: (context) => VideoPlayerModal(
         videoUrl: videoUrl,
-        onClose: () {
-          Navigator.pop(context);
-        },
+        onClose: () => Navigator.pop(context),
       ),
     );
 
     if (mounted) {
       await widget.sessionService.resumeActivity();
-      setState(() => _isVideoPlaying = false);
     }
   }
 
@@ -56,19 +80,13 @@ class _ActivityViewState extends State<ActivityView> {
 
   Future<void> _finishActivity() async {
     if (_isFinishing) return;
-
     setState(() => _isFinishing = true);
 
-    await widget.sessionService.completeActivity({
-      'rating': 5,
-      'completed': true,
-    });
+    await widget.sessionService.completeActivity({'rating': 5, 'completed': true});
 
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (context) => const SessionSummaryView(),
-        ),
+        MaterialPageRoute(builder: (context) => const SessionSummaryView()),
             (route) => false,
       );
     }
@@ -79,6 +97,12 @@ class _ActivityViewState extends State<ActivityView> {
     if (mounted) {
       Navigator.of(context).popUntil((route) => route.isFirst);
     }
+  }
+
+  @override
+  void dispose() {
+    _interventionSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -97,27 +121,20 @@ class _ActivityViewState extends State<ActivityView> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.title,
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          widget.activityOption.title,
+                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Tipo: ${widget.activityType}',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey[600],
+                        if (widget.activityOption.subtitle != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            widget.activityOption.subtitle!,
+                            style: TextStyle(fontSize: 16, color: Colors.grey[600]),
                           ),
-                        ),
+                        ],
                         const SizedBox(height: 24),
-                        const Text(
-                          'Contenido de la actividad aquí...',
-                          style: TextStyle(
-                            fontSize: 18,
-                            height: 1.5,
-                          ),
+                        Text(
+                          widget.activityOption.content ?? 'Sigue las instrucciones del instructor.',
+                          style: const TextStyle(fontSize: 18, height: 1.5),
                         ),
                       ],
                     ),
@@ -125,16 +142,17 @@ class _ActivityViewState extends State<ActivityView> {
                 ),
               ],
             ),
-            if (!_isFinishing && !_isVideoPlaying) ...[
-              if (_isCameraVisible)
-                AnalysisOverlay(sessionService: widget.sessionService),
+            if (!_isFinishing && _isCameraVisible)
+              AnalysisOverlay(
+                sessionService: widget.sessionService,
+              ),
+            if (!_isFinishing)
               FloatingMenu(
                 sessionService: widget.sessionService,
                 onVideoRequested: _handleVideoRequest,
                 onCameraToggle: _toggleCameraVisibility,
                 isCameraVisible: _isCameraVisible,
               ),
-            ],
           ],
         ),
       ),
@@ -144,40 +162,21 @@ class _ActivityViewState extends State<ActivityView> {
   Widget _buildHeader() {
     return Container(
       color: Colors.white,
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 8,
-        bottom: 12,
-        left: 16,
-        right: 16,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          Container(
-            width: 12,
-            height: 12,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.green,
-            ),
-          ),
+          Container(width: 12, height: 12, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.green)),
           const Spacer(),
           ElevatedButton.icon(
             onPressed: _isFinishing ? null : _finishActivity,
             icon: const Icon(Icons.check, size: 18),
             label: const Text('Finalizar'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-              visualDensity: VisualDensity.compact,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
           ),
           const SizedBox(width: 8),
           IconButton(
             onPressed: _isFinishing ? null : _closeActivity,
             icon: const Icon(Icons.close),
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.grey[200],
-            ),
           ),
         ],
       ),

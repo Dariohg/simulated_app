@@ -16,12 +16,14 @@ class HomeView extends StatefulWidget {
 }
 
 class _HomeViewState extends State<HomeView> {
+  // 1. Instancia local del ViewModel (Sin Provider)
   final HomeViewModel _viewModel = HomeViewModel();
   final CalibrationStorage _calibrationStorage = CalibrationStorage();
 
   @override
   void initState() {
     super.initState();
+    // 2. Inicialización directa
     _viewModel.initializeSession(MockUser.id, MockUser.disabilityType);
   }
 
@@ -49,9 +51,7 @@ class _HomeViewState extends State<HomeView> {
           builder: (context) => ActivityView(
             sessionService: _viewModel.sessionService!,
             userId: MockUser.id,
-            externalActivityId: activity.externalActivityId,
-            title: activity.title,
-            activityType: activity.activityType,
+            activityOption: activity, // Pasamos el objeto completo
           ),
         ),
       );
@@ -117,14 +117,22 @@ class _HomeViewState extends State<HomeView> {
       appBar: AppBar(
         title: const Text("Monitor Cognitivo"),
         actions: [
-          if (_viewModel.sessionService != null)
-            IconButton(
-              icon: const Icon(Icons.logout),
-              onPressed: _confirmEndSession,
-              tooltip: 'Finalizar sesión',
-            ),
+          // Usamos ListenableBuilder para partes reactivas específicas
+          ListenableBuilder(
+            listenable: _viewModel,
+            builder: (context, _) {
+              return _viewModel.sessionService != null
+                  ? IconButton(
+                icon: const Icon(Icons.logout),
+                onPressed: _confirmEndSession,
+                tooltip: 'Finalizar sesión',
+              )
+                  : const SizedBox.shrink();
+            },
+          ),
         ],
       ),
+      // 3. ListenableBuilder escucha cambios en _viewModel sin Provider
       body: ListenableBuilder(
         listenable: _viewModel,
         builder: (context, _) {

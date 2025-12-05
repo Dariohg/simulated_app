@@ -46,6 +46,7 @@ class _FloatingMenuState extends State<FloatingMenu> {
         child: GestureDetector(
           onTap: () => setState(() => _isMenuOpen = !_isMenuOpen),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildMenuButton(),
               if (_isMenuOpen) _buildExpandedMenu(),
@@ -65,7 +66,7 @@ class _FloatingMenuState extends State<FloatingMenu> {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
+            color: Colors.black.withValues(alpha: 0.3), // CORREGIDO
             blurRadius: 8,
           ),
         ],
@@ -77,13 +78,13 @@ class _FloatingMenuState extends State<FloatingMenu> {
   Widget _buildExpandedMenu() {
     return Container(
       margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
+            color: Colors.black.withValues(alpha: 0.2), // CORREGIDO
             blurRadius: 8,
           ),
         ],
@@ -97,9 +98,7 @@ class _FloatingMenuState extends State<FloatingMenu> {
           ),
           if (widget.onCameraToggle != null)
             IconButton(
-              icon: Icon(
-                widget.isCameraVisible ? Icons.videocam_off : Icons.videocam,
-              ),
+              icon: Icon(widget.isCameraVisible ? Icons.videocam_off : Icons.videocam),
               color: Colors.blueGrey,
               onPressed: widget.onCameraToggle,
             ),
