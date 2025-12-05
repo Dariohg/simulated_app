@@ -9,7 +9,6 @@ Simulated App es una aplicación móvil desarrollada en **Flutter** que sirve co
 
 El sistema implementa una arquitectura distribuida donde el procesamiento pesado de visión por computadora ocurre en el dispositivo (Edge AI), enviando únicamente metadatos de telemetría ligera al servidor para su análisis longitudinal y respuesta inmediata (intervenciones).
 
-![Dashboard Principal](assets/images/1.png)
 
 ## 2. Funcionalidades del Cliente
 
@@ -18,13 +17,11 @@ El sistema implementa una arquitectura distribuida donde el procesamiento pesado
 * **Feedback en Tiempo Real:** Sistema de superposición (Overlay) que presenta métricas de depuración biométrica sobre la actividad en curso.
 * **Gestión de Intervenciones:** Recepción y ejecución de comandos remotos (WebSocket) para mostrar alertas, pausas o contenido multimedia terapéutico.
 
-![Módulos de Actividad](assets/images/2.png)
 
 ## 3. Arquitectura de Comunicación
 
 La aplicación actúa como un cliente híbrido que utiliza REST para la gestión transaccional y WebSockets para la transmisión de telemetría de alta frecuencia.
 
-![Diagrama de Comunicación](assets/images/3.png)
 
 ### Especificación de la API
 
