@@ -20,7 +20,7 @@ class CalibrationView extends StatefulWidget {
 }
 
 class _CalibrationViewState extends State<CalibrationView> {
-  void _startActivity() {
+  void _goToActivity() {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (context) => ActivityView(
@@ -35,23 +35,13 @@ class _CalibrationViewState extends State<CalibrationView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Calibración')),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'Mire a la cámara y mantenga una expresión neutral',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 18),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _startActivity,
-              child: const Text('Iniciar Actividad'),
-            ),
-          ],
-        ),
+      body: CalibrationScreen(
+        onCalibrationComplete: () {
+          _goToActivity();
+        },
+        onSkip: () {
+          _goToActivity();
+        },
       ),
     );
   }

@@ -6,7 +6,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../viewmodels/home_view_model.dart';
 import '../../../calibration/presentation/views/calibration_view.dart';
 import '../../../activity/presentation/views/activity_view.dart';
-import '../../../config/presentation/views/config_view.dart'; // Import nuevo
+import '../../../config/presentation/views/config_view.dart';
 import 'package:sentiment_analyzer/sentiment_analyzer.dart';
 
 class HomeView extends StatefulWidget {
