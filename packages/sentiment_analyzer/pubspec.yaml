@@ -22,7 +22,6 @@ dependencies:
   url_launcher: ^6.2.0
   video_player: ^2.8.1
   chewie: ^1.7.1
-  youtube_player_flutter: ^8.1.2
 
 dev_dependencies:
   flutter_test:
