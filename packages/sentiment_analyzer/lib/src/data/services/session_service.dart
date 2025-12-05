@@ -52,8 +52,10 @@ class SessionService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('Error creando sesión: $e');
-      return false;
+      _sessionId = "offline_session_${DateTime.now().millisecondsSinceEpoch}";
+      _userId = userId;
+      notifyListeners();
+      return true;
     }
   }
 
@@ -64,89 +66,101 @@ class SessionService extends ChangeNotifier {
     String? subtitle,
     String? content,
   }) async {
-    if (_sessionId == null || _userId == null) return false;
+    if (_userId == null) return false;
 
     try {
-      final response = await network.startActivity(
-        sessionId: _sessionId!,
-        externalActivityId: externalActivityId,
-        title: title,
-        activityType: activityType,
-        subtitle: subtitle,
-        content: content,
-      );
+      if (_sessionId != null && !_sessionId!.startsWith("offline")) {
+        final response = await network.startActivity(
+          sessionId: _sessionId!,
+          externalActivityId: externalActivityId,
+          title: title,
+          activityType: activityType,
+          subtitle: subtitle,
+          content: content,
+        );
+        _activityUuid = response['activity_uuid'];
+      } else {
+        _activityUuid = "offline_activity_${DateTime.now().millisecondsSinceEpoch}";
+      }
 
-      _activityUuid = response['activity_uuid'];
-
-      final connected = await websocket.connect(
-        sessionId: _sessionId!,
+      await websocket.connect(
+        sessionId: _sessionId ?? "offline",
         activityUuid: _activityUuid!,
         userId: _userId!,
         externalActivityId: externalActivityId,
       );
 
       notifyListeners();
-      return connected;
+      return true;
     } catch (e) {
-      debugPrint('Error iniciando actividad: $e');
-      return false;
+      _activityUuid = "offline_activity_${DateTime.now().millisecondsSinceEpoch}";
+      notifyListeners();
+      return true;
     }
   }
 
   void sendAnalysisFrame(Map<String, dynamic> frameData) {
-    if (_sessionId != null && _activityUuid != null) {
+    if (_activityUuid != null) {
       _analysisController.add(frameData);
       websocket.sendFrame(frameData);
-    } else {
-      // Ignorar frames si la actividad no ha iniciado completamente
     }
   }
 
   Future<void> pauseActivity() async {
-    if (_activityUuid != null) {
-      await network.pauseActivity(_activityUuid!);
+    try {
+      if (_activityUuid != null && !_activityUuid!.startsWith("offline")) {
+        await network.pauseActivity(_activityUuid!);
+      }
       websocket.pauseTransmission();
-    }
+    } catch (_) {}
   }
 
   Future<void> resumeActivity() async {
-    if (_activityUuid != null) {
-      await network.resumeActivity(_activityUuid!);
+    try {
+      if (_activityUuid != null && !_activityUuid!.startsWith("offline")) {
+        await network.resumeActivity(_activityUuid!);
+      }
       websocket.resumeTransmission();
-    }
+    } catch (_) {}
   }
 
   Future<void> completeActivity(Map<String, dynamic> feedback) async {
-    if (_activityUuid != null) {
-      await network.completeActivity(
-        activityUuid: _activityUuid!,
-        feedback: feedback,
-      );
-      await websocket.disconnect();
-      _activityUuid = null;
-      notifyListeners();
-    }
+    try {
+      if (_activityUuid != null && !_activityUuid!.startsWith("offline")) {
+        await network.completeActivity(
+          activityUuid: _activityUuid!,
+          feedback: feedback,
+        );
+      }
+    } catch (_) {}
+    await websocket.disconnect();
+    _activityUuid = null;
+    notifyListeners();
   }
 
   Future<void> abandonActivity() async {
-    if (_activityUuid != null) {
-      await network.abandonActivity(_activityUuid!);
-      await websocket.disconnect();
-      _activityUuid = null;
-      notifyListeners();
-    }
+    try {
+      if (_activityUuid != null && !_activityUuid!.startsWith("offline")) {
+        await network.abandonActivity(_activityUuid!);
+      }
+    } catch (_) {}
+    await websocket.disconnect();
+    _activityUuid = null;
+    notifyListeners();
   }
 
   Future<void> finalizeSession() async {
-    if (_sessionId != null) {
-      if (_activityUuid != null) {
-        await abandonActivity();
+    try {
+      if (_sessionId != null && !_sessionId!.startsWith("offline")) {
+        if (_activityUuid != null) {
+          await abandonActivity();
+        }
       }
-      await websocket.disconnect();
-      _sessionId = null;
-      _userId = null;
-      notifyListeners();
-    }
+    } catch (_) {}
+    await websocket.disconnect();
+    _sessionId = null;
+    _userId = null;
+    notifyListeners();
   }
 
   @override

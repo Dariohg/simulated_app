@@ -29,17 +29,24 @@ class HomeViewModel extends ChangeNotifier {
         apiKey: EnvConfig.apiToken,
       );
 
-      final success = await _sessionService!.createSession(
+      await _sessionService!.createSession(
         userId: userId,
         disabilityType: disabilityType,
         cognitiveAnalysisEnabled: true,
       );
 
-      if (!success) {
-        _error = 'Error al crear sesion';
-      }
     } catch (e) {
-      _error = e.toString();
+      if (_sessionService == null) {
+        final network = AppNetworkService(
+          EnvConfig.apiGatewayUrl,
+          EnvConfig.apiToken,
+        );
+        _sessionService = SessionService(
+          network: network,
+          gatewayUrl: EnvConfig.apiGatewayUrl,
+          apiKey: EnvConfig.apiToken,
+        );
+      }
     } finally {
       _isLoading = false;
       notifyListeners();

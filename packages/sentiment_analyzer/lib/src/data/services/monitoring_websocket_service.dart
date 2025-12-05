@@ -53,6 +53,10 @@ class MonitoringWebSocketService extends ChangeNotifier {
   }) async {
     await disconnect();
 
+    if (sessionId.startsWith("offline") || activityUuid.startsWith("offline")) {
+      return false;
+    }
+
     _currentSessionId = sessionId;
     _currentActivityUuid = activityUuid;
     _userId = userId;
@@ -85,7 +89,6 @@ class MonitoringWebSocketService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('WS Connect Error: $e');
       _status = WebSocketStatus.error;
       notifyListeners();
       return false;
@@ -142,29 +145,22 @@ class MonitoringWebSocketService extends ChangeNotifier {
       if (type == 'intervention' || type == 'haptic_nudge') {
         _interventionController.add(InterventionEvent.fromJson(data));
       }
-    } catch (e) {
-      debugPrint('WS Message Error: $e');
-    }
+    } catch (_) {}
   }
 
   void sendFrame(Map<String, dynamic> frameData) {
     if (_status != WebSocketStatus.ready || _isPaused) return;
 
     try {
-      // CORRECCIÓN DEFENSIVA: Asegurar que metadata sea mutable y dinámico
       final metadata = Map<String, dynamic>.from(frameData['metadata'] ?? {});
-
       metadata['timestamp'] = DateTime.now().toIso8601String();
       metadata['user_id'] = _userId;
       metadata['session_id'] = _currentSessionId;
       metadata['external_activity_id'] = _externalActivityId;
 
       frameData['metadata'] = metadata;
-
       _channel?.sink.add(jsonEncode(frameData));
-    } catch (e) {
-      debugPrint('WS Send Error: $e');
-    }
+    } catch (_) {}
   }
 
   void pauseTransmission() => _isPaused = true;
@@ -185,7 +181,6 @@ class MonitoringWebSocketService extends ChangeNotifier {
   }
 
   void _handleError(error) {
-    debugPrint('WS Error: $error');
     _status = WebSocketStatus.error;
     notifyListeners();
     _attemptReconnect();
@@ -199,6 +194,8 @@ class MonitoringWebSocketService extends ChangeNotifier {
 
   void _attemptReconnect() {
     if (_reconnectAttempts >= 5 || _currentSessionId == null) return;
+    if (_currentSessionId!.startsWith("offline")) return;
+
     _reconnectAttempts++;
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(const Duration(seconds: 3), () {

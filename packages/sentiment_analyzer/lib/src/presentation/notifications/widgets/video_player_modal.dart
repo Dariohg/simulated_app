@@ -19,7 +19,8 @@ class VideoPlayerModal extends StatefulWidget {
 class _VideoPlayerModalState extends State<VideoPlayerModal> {
   late VideoPlayerController _videoPlayerController;
   ChewieController? _chewieController;
-  bool _isError = false;
+  bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -42,20 +43,22 @@ class _VideoPlayerModalState extends State<VideoPlayerModal> {
         aspectRatio: _videoPlayerController.value.aspectRatio,
         errorBuilder: (context, errorMessage) {
           return Center(
-            child: Text(
-              errorMessage,
-              style: const TextStyle(color: Colors.white),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                "Error al reproducir: $errorMessage",
+                style: const TextStyle(color: Colors.white),
+                textAlign: TextAlign.center,
+              ),
             ),
           );
         },
       );
-
-      if (mounted) {
-        setState(() {});
-      }
     } catch (e) {
+      _errorMessage = "No se pudo cargar el video.\nVerifica tu conexión a internet.";
+    } finally {
       if (mounted) {
-        setState(() => _isError = true);
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -71,24 +74,36 @@ class _VideoPlayerModalState extends State<VideoPlayerModal> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.black,
-      insetPadding: const EdgeInsets.all(16),
+      insetPadding: const EdgeInsets.all(10),
       child: Stack(
         alignment: Alignment.topRight,
         children: [
           Container(
             width: double.infinity,
-            height: 300, // Altura del reproductor
+            height: 400,
             alignment: Alignment.center,
-            child: _isError
-                ? const Text("Error al cargar video", style: TextStyle(color: Colors.white))
-                : _chewieController != null &&
-                _chewieController!.videoPlayerController.value.isInitialized
-                ? Chewie(controller: _chewieController!)
-                : const CircularProgressIndicator(),
+            child: _isLoading
+                ? const CircularProgressIndicator(color: Colors.white)
+                : _errorMessage != null
+                ? Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                _errorMessage!,
+                style: const TextStyle(color: Colors.white),
+                textAlign: TextAlign.center,
+              ),
+            )
+                : Chewie(controller: _chewieController!),
           ),
-          IconButton(
-            icon: const Icon(Icons.close, color: Colors.white),
-            onPressed: widget.onClose,
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: CircleAvatar(
+              backgroundColor: Colors.black54,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: widget.onClose,
+              ),
+            ),
           ),
         ],
       ),
