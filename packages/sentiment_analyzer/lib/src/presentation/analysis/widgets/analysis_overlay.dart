@@ -1,89 +1,118 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:provider/provider.dart'; // <--- ESTA LINEA FALTABA
 import '../viewmodel/analysis_view_model.dart';
-import '../../../core/logic/state_aggregator.dart';
+import '../../../data/services/camera_service.dart';
+import '../../../data/services/face_mesh_service.dart';
+import '../../../data/services/session_service.dart';
 import '../../../core/constants/app_colors.dart';
 
-class AnalysisOverlay extends StatelessWidget {
-  final AnalysisViewModel viewModel;
-  final bool isVisible;
+class AnalysisOverlay extends StatefulWidget {
+  final SessionService sessionService;
+  final Function(Map<String, dynamic>)? onStateChanged;
 
   const AnalysisOverlay({
     super.key,
-    required this.viewModel,
-    required this.isVisible,
+    required this.sessionService,
+    this.onStateChanged,
   });
 
   @override
+  State<AnalysisOverlay> createState() => _AnalysisOverlayState();
+}
+
+class _AnalysisOverlayState extends State<AnalysisOverlay> {
+  late AnalysisViewModel _viewModel;
+
+  @override
+  void initState() {
+    super.initState();
+    _viewModel = AnalysisViewModel(
+      cameraService: CameraService(),
+      faceMeshService: FaceMeshService(),
+    );
+    _viewModel.addListener(_onStateChanged);
+  }
+
+  void _onStateChanged() {
+    final state = _viewModel.currentState;
+    if (state != null) {
+      final frameData = state.toJson();
+      widget.sessionService.sendAnalysisFrame(frameData);
+      widget.onStateChanged?.call(frameData);
+    }
+  }
+
+  @override
+  void dispose() {
+    _viewModel.removeListener(_onStateChanged);
+    _viewModel.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (!isVisible) return const SizedBox.shrink();
+    if (!_viewModel.isInitialized) return const SizedBox.shrink();
+
+    final controller = _viewModel.cameraController;
+    final state = _viewModel.currentState;
+
+    if (controller == null) return const SizedBox.shrink();
 
     return Positioned(
       bottom: 16,
       left: 16,
-      child: Consumer<AnalysisViewModel>(
-        builder: (context, vm, _) {
-          if (!vm.isInitialized || vm.cameraController == null) {
-            return const SizedBox(width: 120, height: 160);
-          }
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (vm.currentState != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _buildDetailedInfoPanel(context, vm.currentState!),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (state != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _buildDetailedInfoPanel(state),
+            ),
+          Container(
+            width: 120,
+            height: 160,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.2),
+                  blurRadius: 8,
                 ),
-              Container(
-                width: 120,
-                height: 160,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white, width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      CameraPreview(vm.cameraController!),
-                      if (vm.currentState != null)
-                        Positioned(
-                          bottom: 4,
-                          left: 4,
-                          child: Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              color: vm.currentState!.faceDetected
-                                  ? Colors.green
-                                  : Colors.red,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white),
-                            ),
-                          ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CameraPreview(controller),
+                  if (state != null)
+                    Positioned(
+                      bottom: 4,
+                      left: 4,
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: state.faceDetected ? Colors.green : Colors.red,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white),
                         ),
-                    ],
-                  ),
-                ),
+                      ),
+                    ),
+                ],
               ),
-            ],
-          );
-        },
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildDetailedInfoPanel(BuildContext context, CombinedState state) {
+  Widget _buildDetailedInfoPanel(dynamic state) {
     String statusText = state.finalState.toUpperCase();
     Color statusColor = _getStateColor(state.finalState);
 
@@ -96,6 +125,7 @@ class AnalysisOverlay extends StatelessWidget {
     if (state.emotion.toLowerCase() == 'angry') emotionText = "ENOJADO";
     if (state.emotion.toLowerCase() == 'sad') emotionText = "TRISTE";
     if (state.emotion.toLowerCase() == 'fear') emotionText = "MIEDO";
+    if (state.emotion.toLowerCase() == 'happy') emotionText = "FELIZ";
 
     return Container(
       width: 120,

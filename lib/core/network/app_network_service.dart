@@ -1,31 +1,36 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:sentiment_analyzer/sentiment_analyzer.dart';
-import '../config/env_config.dart';
 
 class AppNetworkService implements SentimentNetworkInterface {
-  late final Dio _dio;
-  final String baseUrl;
-  final String apiKey;
+  final Dio _dio;
 
-  AppNetworkService({String? baseUrl, String? apiKey})
-      : baseUrl = baseUrl ?? EnvConfig.apiGatewayUrl,
-        apiKey = apiKey ?? EnvConfig.apiToken {
-    _dio = Dio(BaseOptions(
-      baseUrl: this.baseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
+  AppNetworkService(String baseUrl, String apiKey)
+      : _dio = Dio(
+    BaseOptions(
+      baseUrl: baseUrl,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ${this.apiKey}',
+        'Authorization': 'Bearer $apiKey',
       },
-    ));
+    ),
+  );
 
-    _dio.interceptors.add(LogInterceptor(
-      requestBody: true,
-      responseBody: true,
-      logPrint: (obj) => debugPrint('[DIO] $obj'),
-    ));
+  @override
+  Future<Map<String, dynamic>> getUserConfig(int userId) async {
+    final response = await _dio.get('/users/$userId/config');
+    return response.data as Map<String, dynamic>;
+  }
+
+  @override
+  Future<Map<String, dynamic>> updateUserConfig({
+    required int userId,
+    required Map<String, dynamic> settings,
+  }) async {
+    final response = await _dio.patch(
+      '/users/$userId/config',
+      data: {'settings': settings},
+    );
+    return response.data as Map<String, dynamic>;
   }
 
   @override
@@ -43,17 +48,6 @@ class AppNetworkService implements SentimentNetworkInterface {
   }
 
   @override
-  Future<Map<String, dynamic>> getSession(String sessionId) async {
-    final response = await _dio.get('/sessions/$sessionId');
-    return response.data as Map<String, dynamic>;
-  }
-
-  @override
-  Future<void> sendHeartbeat(String sessionId) async {
-    await _dio.post('/sessions/$sessionId/heartbeat');
-  }
-
-  @override
   Future<void> pauseSession(String sessionId) async {
     await _dio.post('/sessions/$sessionId/pause');
   }
@@ -64,9 +58,8 @@ class AppNetworkService implements SentimentNetworkInterface {
   }
 
   @override
-  Future<Map<String, dynamic>> finalizeSession(String sessionId) async {
-    final response = await _dio.delete('/sessions/$sessionId');
-    return response.data as Map<String, dynamic>;
+  Future<void> finalizeSession(String sessionId) async {
+    await _dio.delete('/sessions/$sessionId');
   }
 
   @override
@@ -74,70 +67,43 @@ class AppNetworkService implements SentimentNetworkInterface {
     required String sessionId,
     required int externalActivityId,
     required String title,
+    required String activityType,
     String? subtitle,
     String? content,
-    required String activityType,
   }) async {
-    final response = await _dio.post('/sessions/$sessionId/activity/start', data: {
-      'external_activity_id': externalActivityId,
-      'title': title,
-      'subtitle': subtitle,
-      'content': content,
-      'activity_type': activityType,
-    });
+    final response = await _dio.post(
+      '/sessions/$sessionId/activity/start',
+      data: {
+        'external_activity_id': externalActivityId,
+        'title': title,
+        'activity_type': activityType,
+        if (subtitle != null) 'subtitle': subtitle,
+        if (content != null) 'content': content,
+      },
+    );
     return response.data as Map<String, dynamic>;
   }
 
   @override
-  Future<Map<String, dynamic>> completeActivity({
+  Future<void> completeActivity({
     required String activityUuid,
     required Map<String, dynamic> feedback,
   }) async {
-    final response = await _dio.post('/activities/$activityUuid/complete', data: {
-      'feedback': feedback,
-    });
-    return response.data as Map<String, dynamic>;
+    await _dio.post('/activities/$activityUuid/complete', data: {'feedback': feedback});
   }
 
   @override
-  Future<Map<String, dynamic>> abandonActivity({
-    required String activityUuid,
-  }) async {
-    final response = await _dio.post('/activities/$activityUuid/abandon');
-    return response.data as Map<String, dynamic>;
+  Future<void> abandonActivity(String activityUuid) async {
+    await _dio.post('/activities/$activityUuid/abandon');
   }
 
   @override
-  Future<Map<String, dynamic>> pauseActivity({
-    required String activityUuid,
-  }) async {
-    final response = await _dio.post('/activities/$activityUuid/pause');
-    return response.data as Map<String, dynamic>;
+  Future<void> pauseActivity(String activityUuid) async {
+    await _dio.post('/activities/$activityUuid/pause');
   }
 
   @override
-  Future<Map<String, dynamic>> resumeActivity({
-    required String activityUuid,
-  }) async {
-    final response = await _dio.post('/activities/$activityUuid/resume');
-    return response.data as Map<String, dynamic>;
-  }
-
-  @override
-  Future<void> updateConfig({
-    required String sessionId,
-    required bool cognitiveAnalysisEnabled,
-    required bool textNotifications,
-    required bool videoSuggestions,
-    required bool vibrationAlerts,
-    required bool pauseSuggestions,
-  }) async {
-    await _dio.post('/sessions/$sessionId/config', data: {
-      'cognitive_analysis_enabled': cognitiveAnalysisEnabled,
-      'text_notifications': textNotifications,
-      'video_suggestions': videoSuggestions,
-      'vibration_alerts': vibrationAlerts,
-      'pause_suggestions': pauseSuggestions,
-    });
+  Future<void> resumeActivity(String activityUuid) async {
+    await _dio.post('/activities/$activityUuid/resume');
   }
 }

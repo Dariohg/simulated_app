@@ -3,9 +3,9 @@ import '../../../../core/mocks/mock_activities.dart';
 import '../../../../core/mocks/mock_user.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../viewmodels/home_view_model.dart';
 import '../../../calibration/presentation/views/calibration_view.dart';
 import '../../../activity/presentation/views/activity_view.dart';
-import '../viewmodels/home_view_model.dart';
 import 'package:sentiment_analyzer/sentiment_analyzer.dart';
 
 class HomeView extends StatefulWidget {
@@ -22,36 +22,50 @@ class _HomeViewState extends State<HomeView> {
   @override
   void initState() {
     super.initState();
-    _viewModel.initializeSession();
+    _viewModel.initializeSession(MockUser.id, MockUser.disabilityType);
   }
 
   Future<void> _onActivitySelected(ActivityOption activity) async {
-    if (_viewModel.sessionManager == null) return;
+    if (_viewModel.sessionService == null) return;
 
     final savedCalibration = await _calibrationStorage.load();
 
-    if (mounted) {
-      if (savedCalibration != null && savedCalibration.isSuccessful) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ActivityView(
-              sessionManager: _viewModel.sessionManager!,
-              activityOption: activity,
-            ),
+    if (!mounted) return;
+
+    if (savedCalibration != null && savedCalibration.isSuccessful) {
+      await _viewModel.sessionService!.startActivity(
+        externalActivityId: activity.externalActivityId,
+        title: activity.title,
+        activityType: activity.activityType,
+        subtitle: activity.subtitle,
+        content: activity.content,
+      );
+
+      if (!mounted) return;
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ActivityView(
+            sessionService: _viewModel.sessionService!,
+            userId: MockUser.id,
+            externalActivityId: activity.externalActivityId,
+            title: activity.title,
+            activityType: activity.activityType,
           ),
-        );
-      } else {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => CalibrationView(
-              sessionManager: _viewModel.sessionManager!,
-              activityOption: activity,
-            ),
+        ),
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => CalibrationView(
+            sessionService: _viewModel.sessionService!,
+            userId: MockUser.id,
+            activityOption: activity,
           ),
-        );
-      }
+        ),
+      );
     }
   }
 
@@ -60,7 +74,7 @@ class _HomeViewState extends State<HomeView> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Finalizar sesión'),
-        content: const Text('¿Deseas cerrar tu sesión de estudio? Esto finalizará todas las actividades.'),
+        content: const Text('¿Deseas cerrar tu sesión de estudio?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -103,7 +117,7 @@ class _HomeViewState extends State<HomeView> {
       appBar: AppBar(
         title: const Text("Monitor Cognitivo"),
         actions: [
-          if (_viewModel.sessionManager != null)
+          if (_viewModel.sessionService != null)
             IconButton(
               icon: const Icon(Icons.logout),
               onPressed: _confirmEndSession,
@@ -126,7 +140,10 @@ class _HomeViewState extends State<HomeView> {
                   Text("Error: ${_viewModel.error}"),
                   const SizedBox(height: 16),
                   ElevatedButton(
-                    onPressed: () => _viewModel.initializeSession(),
+                    onPressed: () => _viewModel.initializeSession(
+                      MockUser.id,
+                      MockUser.disabilityType,
+                    ),
                     child: const Text("Reintentar"),
                   ),
                 ],
@@ -145,9 +162,9 @@ class _HomeViewState extends State<HomeView> {
                   style: AppTextStyles.headline6.copyWith(color: AppColors.primary),
                 ),
                 const SizedBox(height: 8),
-                if (_viewModel.sessionId != null)
+                if (_viewModel.sessionService?.sessionId != null)
                   Text(
-                    "Sesión: ${_viewModel.sessionId!.substring(0, 8)}...",
+                    "Sesión: ${_viewModel.sessionService!.sessionId!.substring(0, 8)}...",
                     style: AppTextStyles.body2,
                   ),
                 const SizedBox(height: 24),

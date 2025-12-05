@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import '../models/recommendation_model.dart';
+import '../models/intervention_event.dart';
 
 enum WebSocketStatus {
   disconnected,
@@ -37,14 +37,11 @@ class MonitoringWebSocketService extends ChangeNotifier {
   int? _externalActivityId;
   bool _isPaused = false;
 
-  int _framesSent = 0;
-
-  final StreamController<Recommendation> _recommendationController =
-  StreamController<Recommendation>.broadcast();
+  final StreamController<InterventionEvent> _interventionController =
+  StreamController<InterventionEvent>.broadcast();
 
   WebSocketStatus get status => _status;
-  Stream<Recommendation> get recommendationStream =>
-      _recommendationController.stream;
+  Stream<InterventionEvent> get interventionStream => _interventionController.stream;
   String? get currentActivityUuid => _currentActivityUuid;
   bool get isPaused => _isPaused;
 
@@ -59,15 +56,7 @@ class MonitoringWebSocketService extends ChangeNotifier {
     required int userId,
     required int externalActivityId,
   }) async {
-    debugPrint('[MonitoringWS] ===== INICIO CONNECT =====');
-    debugPrint('[MonitoringWS] sessionId: $sessionId');
-    debugPrint('[MonitoringWS] activityUuid: $activityUuid');
-    debugPrint('[MonitoringWS] userId: $userId');
-    debugPrint('[MonitoringWS] externalActivityId: $externalActivityId');
-
-    if (_status == WebSocketStatus.ready &&
-        _currentActivityUuid == activityUuid) {
-      debugPrint('[MonitoringWS] Ya conectado a actividad: $activityUuid');
+    if (_status == WebSocketStatus.ready && _currentActivityUuid == activityUuid) {
       return true;
     }
 
@@ -77,24 +66,19 @@ class MonitoringWebSocketService extends ChangeNotifier {
     _currentActivityUuid = activityUuid;
     _userId = userId;
     _externalActivityId = externalActivityId;
-    _framesSent = 0;
 
     _status = WebSocketStatus.connecting;
     notifyListeners();
 
     try {
       final wsUrl = _buildWebSocketUrl(sessionId, activityUuid);
-      debugPrint('[MonitoringWS] URL construida: $wsUrl');
-      debugPrint('[MonitoringWS] Conectando...');
 
       _channel = WebSocketChannel.connect(
         Uri.parse(wsUrl),
         protocols: ['websocket'],
       );
 
-      debugPrint('[MonitoringWS] Esperando ready...');
       await _channel!.ready;
-      debugPrint('[MonitoringWS] Channel ready OK');
 
       _broadcastStream = _channel!.stream.asBroadcastStream();
 
@@ -102,30 +86,22 @@ class MonitoringWebSocketService extends ChangeNotifier {
       notifyListeners();
 
       _setupListeners();
-      debugPrint('[MonitoringWS] Listeners configurados');
 
-      debugPrint('[MonitoringWS] Iniciando handshake...');
-      final handshakeSuccess =
-      await _performHandshake(userId, externalActivityId);
+      final handshakeSuccess = await _performHandshake(userId, externalActivityId);
 
       if (!handshakeSuccess) {
-        debugPrint('[MonitoringWS] ERROR: Handshake fallido');
         _status = WebSocketStatus.error;
         notifyListeners();
         return false;
       }
 
-      debugPrint('[MonitoringWS] Handshake exitoso!');
       _status = WebSocketStatus.ready;
       _reconnectAttempts = 0;
       _startPingTimer();
 
-      debugPrint('[MonitoringWS] ===== CONECTADO Y LISTO =====');
-      debugPrint('[MonitoringWS] Estado: ready para actividad $activityUuid');
       notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('[MonitoringWS] ERROR conectando: $e');
       _status = WebSocketStatus.error;
       notifyListeners();
       return false;
@@ -135,7 +111,6 @@ class MonitoringWebSocketService extends ChangeNotifier {
   void pauseTransmission() {
     if (!_isPaused) {
       _isPaused = true;
-      debugPrint('[MonitoringWS] Transmision pausada');
       notifyListeners();
     }
   }
@@ -143,7 +118,6 @@ class MonitoringWebSocketService extends ChangeNotifier {
   void resumeTransmission() {
     if (_isPaused) {
       _isPaused = false;
-      debugPrint('[MonitoringWS] Transmision reanudada');
       notifyListeners();
     }
   }
@@ -163,12 +137,7 @@ class MonitoringWebSocketService extends ChangeNotifier {
   }
 
   Future<bool> _performHandshake(int userId, int externalActivityId) async {
-    debugPrint('[MonitoringWS] _performHandshake() llamado');
-    debugPrint('[MonitoringWS]   userId: $userId');
-    debugPrint('[MonitoringWS]   externalActivityId: $externalActivityId');
-
     if (_broadcastStream == null) {
-      debugPrint('[MonitoringWS] Error: Broadcast stream es null');
       return false;
     }
 
@@ -180,19 +149,16 @@ class MonitoringWebSocketService extends ChangeNotifier {
           (message) {
         try {
           final data = jsonDecode(message);
-
           if (data['type'] == 'handshake_ack') {
-            debugPrint('[MonitoringWS] HANDSHAKE_ACK recibido!');
             if (!completer.isCompleted) completer.complete(true);
             handshakeSubscription?.cancel();
             timeoutTimer?.cancel();
           }
         } catch (e) {
-          // Ignorar otros mensajes
+          debugPrint('[WS] Error handshake: $e');
         }
       },
       onError: (error) {
-        debugPrint('[MonitoringWS] Error en stream durante handshake: $error');
         if (!completer.isCompleted) completer.complete(false);
         handshakeSubscription?.cancel();
         timeoutTimer?.cancel();
@@ -201,7 +167,6 @@ class MonitoringWebSocketService extends ChangeNotifier {
 
     timeoutTimer = Timer(const Duration(seconds: 10), () {
       if (!completer.isCompleted) {
-        debugPrint('[MonitoringWS] TIMEOUT esperando handshake_ack (10s)');
         completer.complete(false);
         handshakeSubscription?.cancel();
       }
@@ -214,15 +179,12 @@ class MonitoringWebSocketService extends ChangeNotifier {
         'external_activity_id': externalActivityId,
       });
 
-      debugPrint('[MonitoringWS] Enviando handshake: $handshakeMessage');
       _channel!.sink.add(handshakeMessage);
-      debugPrint('[MonitoringWS] Handshake enviado, esperando ack...');
 
       return await completer.future;
     } catch (e) {
       timeoutTimer.cancel();
       handshakeSubscription.cancel();
-      debugPrint('[MonitoringWS] ERROR enviando handshake: $e');
       return false;
     }
   }
@@ -249,25 +211,22 @@ class MonitoringWebSocketService extends ChangeNotifier {
         return;
       }
 
-      if (type == 'recommendation') {
-        debugPrint('[MonitoringWS] Recomendacion recibida: ${data['action']}');
-        final recommendation = Recommendation.fromJson(data);
-        _recommendationController.add(recommendation);
+      if (type == 'intervention' || type == 'haptic_nudge') {
+        final event = InterventionEvent.fromJson(data);
+        _interventionController.add(event);
       }
     } catch (e) {
-      debugPrint('[MonitoringWS] Error parseando mensaje: $e');
+      debugPrint('[WS] Error: $e');
     }
   }
 
   void _handleError(dynamic error) {
-    debugPrint('[MonitoringWS] Error en stream: $error');
     _status = WebSocketStatus.error;
     notifyListeners();
     _attemptReconnect();
   }
 
   void _handleDone() {
-    debugPrint('[MonitoringWS] Stream cerrado (onDone)');
     _status = WebSocketStatus.disconnected;
     notifyListeners();
 
@@ -278,7 +237,6 @@ class MonitoringWebSocketService extends ChangeNotifier {
 
   void _attemptReconnect() {
     if (_reconnectAttempts >= maxReconnectAttempts) {
-      debugPrint('[MonitoringWS] Max intentos de reconexion alcanzados');
       _status = WebSocketStatus.error;
       notifyListeners();
       return;
@@ -295,12 +253,8 @@ class MonitoringWebSocketService extends ChangeNotifier {
     _status = WebSocketStatus.reconnecting;
     notifyListeners();
 
-    final delay = reconnectDelay;
-    debugPrint(
-        '[MonitoringWS] Reconectando en ${delay.inSeconds}s (intento $_reconnectAttempts)');
-
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(delay, () {
+    _reconnectTimer = Timer(reconnectDelay, () {
       if (_currentActivityUuid != null) {
         connect(
           sessionId: _currentSessionId!,
@@ -329,16 +283,12 @@ class MonitoringWebSocketService extends ChangeNotifier {
       });
       _channel?.sink.add(pingMessage);
     } catch (e) {
-      debugPrint('[MonitoringWS] Error enviando ping: $e');
+      debugPrint('[WS] Error ping: $e');
     }
   }
 
   void sendFrame(Map<String, dynamic> frameData) {
     if (_status != WebSocketStatus.ready) {
-      if (_framesSent % 50 == 0) {
-        debugPrint(
-            '[MonitoringWS] sendFrame RECHAZADO: Estado no es ready ($_status)');
-      }
       return;
     }
 
@@ -347,7 +297,6 @@ class MonitoringWebSocketService extends ChangeNotifier {
     }
 
     try {
-      // CORRECCIÓN: Usar <String, dynamic>{} explícitamente para evitar problemas de tipo
       frameData['metadata'] ??= <String, dynamic>{};
       frameData['metadata']['timestamp'] = DateTime.now().toIso8601String();
       frameData['metadata']['user_id'] = _userId;
@@ -356,14 +305,7 @@ class MonitoringWebSocketService extends ChangeNotifier {
 
       final message = jsonEncode(frameData);
       _channel?.sink.add(message);
-
-      _framesSent++;
-
-      if (_framesSent % 25 == 0) {
-        debugPrint('[MonitoringWS] Frame #$_framesSent enviado EXITOSAMENTE');
-      }
     } catch (e) {
-      debugPrint('[MonitoringWS] ERROR CRITICO enviando frame: $e');
       _status = WebSocketStatus.error;
       notifyListeners();
       _attemptReconnect();
@@ -371,11 +313,6 @@ class MonitoringWebSocketService extends ChangeNotifier {
   }
 
   Future<void> disconnect() async {
-    if (_currentActivityUuid != null) {
-      debugPrint(
-          '[MonitoringWS] Desconectando de actividad: $_currentActivityUuid');
-    }
-
     _pingTimer?.cancel();
     _reconnectTimer?.cancel();
     _streamSubscription?.cancel();
@@ -383,7 +320,7 @@ class MonitoringWebSocketService extends ChangeNotifier {
     try {
       await _channel?.sink.close();
     } catch (e) {
-      debugPrint('[MonitoringWS] Error cerrando sink: $e');
+      debugPrint('[WS] Error disconnect: $e');
     }
     _channel = null;
     _broadcastStream = null;
@@ -393,7 +330,6 @@ class MonitoringWebSocketService extends ChangeNotifier {
     _userId = null;
     _externalActivityId = null;
     _reconnectAttempts = 0;
-    _framesSent = 0;
 
     _status = WebSocketStatus.disconnected;
     notifyListeners();
@@ -402,7 +338,7 @@ class MonitoringWebSocketService extends ChangeNotifier {
   @override
   void dispose() {
     disconnect();
-    _recommendationController.close();
+    _interventionController.close();
     super.dispose();
   }
 }

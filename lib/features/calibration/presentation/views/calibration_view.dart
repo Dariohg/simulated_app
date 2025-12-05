@@ -4,12 +4,14 @@ import '../../../../core/mocks/mock_activities.dart';
 import '../../../activity/presentation/views/activity_view.dart';
 
 class CalibrationView extends StatelessWidget {
-  final SessionManager sessionManager;
+  final SessionService sessionService;
+  final int userId;
   final ActivityOption activityOption;
 
   const CalibrationView({
     super.key,
-    required this.sessionManager,
+    required this.sessionService,
+    required this.userId,
     required this.activityOption,
   });
 
@@ -17,27 +19,36 @@ class CalibrationView extends StatelessWidget {
   Widget build(BuildContext context) {
     return CalibrationScreen(
       onCalibrationComplete: () {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ActivityView(
-              sessionManager: sessionManager,
-              activityOption: activityOption,
-            ),
-          ),
-        );
+        _navigateToActivity(context);
       },
       onSkip: () {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ActivityView(
-              sessionManager: sessionManager,
-              activityOption: activityOption,
-            ),
-          ),
-        );
+        _navigateToActivity(context);
       },
     );
+  }
+
+  void _navigateToActivity(BuildContext context) async {
+    await sessionService.startActivity(
+      externalActivityId: activityOption.externalActivityId,
+      title: activityOption.title,
+      activityType: activityOption.activityType,
+      subtitle: activityOption.subtitle,
+      content: activityOption.content,
+    );
+
+    if (context.mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ActivityView(
+            sessionService: sessionService,
+            userId: userId,
+            externalActivityId: activityOption.externalActivityId,
+            title: activityOption.title,
+            activityType: activityOption.activityType,
+          ),
+        ),
+      );
+    }
   }
 }

@@ -1,15 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:sentiment_analyzer/sentiment_analyzer.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
 
 class SessionSummaryView extends StatelessWidget {
-  final SessionManager sessionManager;
-
-  const SessionSummaryView({
-    super.key,
-    required this.sessionManager,
-  });
+  const SessionSummaryView({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +9,7 @@ class SessionSummaryView extends StatelessWidget {
       canPop: false,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Resumen'),
+          title: const Text('Resumen de Sesión'),
           automaticallyImplyLeading: false,
         ),
         body: Center(
@@ -33,13 +25,16 @@ class SessionSummaryView extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
                 const Text(
-                  'Actividad completada!',
-                  style: AppTextStyles.headline1,
+                  'Actividad Completada',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Gracias por completar la actividad.',
-                  style: AppTextStyles.body1,
+                  'Gracias por completar la actividad. Tu progreso ha sido guardado.',
+                  style: TextStyle(fontSize: 16),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 40),
@@ -47,13 +42,19 @@ class SessionSummaryView extends StatelessWidget {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () {
-                      Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+                      Navigator.of(context).pushNamedAndRemoveUntil(
+                        '/',
+                            (route) => false,
+                      );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
+                      backgroundColor: Colors.blue,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child: const Text('Continuar con otra actividad'),
+                    child: const Text(
+                      'Continuar con otra actividad',
+                      style: TextStyle(fontSize: 16),
+                    ),
                   ),
                 ),
               ],

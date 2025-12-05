@@ -1,28 +1,42 @@
 import 'package:flutter/material.dart';
 import 'package:sentiment_analyzer/sentiment_analyzer.dart';
-import '../../../../core/services/session_manager_singleton.dart';
+import '../../../../core/config/env_config.dart';
+import '../../../../core/network/app_network_service.dart';
 
 class HomeViewModel extends ChangeNotifier {
-  final SessionManagerSingleton _singleton = SessionManagerSingleton();
-
-  SessionManager? get sessionManager => _singleton.sessionManager;
-  String? get sessionId => _singleton.sessionManager?.sessionId;
-
+  SessionService? _sessionService;
   bool _isLoading = false;
-  bool get isLoading => _isLoading;
-
   String? _error;
+
+  SessionService? get sessionService => _sessionService;
+  bool get isLoading => _isLoading;
   String? get error => _error;
 
-  Future<void> initializeSession() async {
+  Future<void> initializeSession(int userId, String disabilityType) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      final success = await _singleton.initializeIfNeeded();
+      final network = AppNetworkService(
+        EnvConfig.apiGatewayUrl,
+        EnvConfig.apiToken,
+      );
+
+      _sessionService = SessionService(
+        network: network,
+        gatewayUrl: EnvConfig.apiGatewayUrl,
+        apiKey: EnvConfig.apiToken,
+      );
+
+      final success = await _sessionService!.createSession(
+        userId: userId,
+        disabilityType: disabilityType,
+        cognitiveAnalysisEnabled: true,
+      );
+
       if (!success) {
-        _error = 'No se pudo crear la sesion';
+        _error = 'Error al crear sesion';
       }
     } catch (e) {
       _error = e.toString();
@@ -33,11 +47,9 @@ class HomeViewModel extends ChangeNotifier {
   }
 
   Future<void> finalizeSession() async {
-    try {
-      await _singleton.finalizeSession();
-      notifyListeners();
-    } catch (e) {
-      _error = e.toString();
+    if (_sessionService != null) {
+      await _sessionService!.finalizeSession();
+      _sessionService = null;
       notifyListeners();
     }
   }

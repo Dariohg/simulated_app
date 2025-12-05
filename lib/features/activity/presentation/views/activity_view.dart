@@ -1,19 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:vibration/vibration.dart';
 import 'package:sentiment_analyzer/sentiment_analyzer.dart';
-import '../../../../core/mocks/mock_activities.dart';
-import '../../../../core/config/env_config.dart';
 import '../../../session_summary/presentation/views/session_summary_view.dart';
-import '../../../config/presentation/views/session_config_view.dart';
 
 class ActivityView extends StatefulWidget {
-  final SessionManager sessionManager;
-  final ActivityOption activityOption;
+  final SessionService sessionService;
+  final int userId;
+  final int externalActivityId;
+  final String title;
+  final String activityType;
 
   const ActivityView({
     super.key,
-    required this.sessionManager,
-    required this.activityOption,
+    required this.sessionService,
+    required this.userId,
+    required this.externalActivityId,
+    required this.title,
+    required this.activityType,
   });
 
   @override
@@ -21,60 +23,43 @@ class ActivityView extends StatefulWidget {
 }
 
 class _ActivityViewState extends State<ActivityView> {
-  bool _isInitializing = true;
-  String? _error;
-  bool _isSettingsOpen = false;
-  bool _isConnected = false;
-  CalibrationResult? _savedCalibration;
+  bool _isVideoPlaying = false;
+  bool _isCameraVisible = true;
   bool _isFinishing = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _initializeActivityAndCalibration();
+  void _handleVideoRequest(String videoUrl) async {
+    setState(() => _isVideoPlaying = true);
+    await widget.sessionService.pauseActivity();
+
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => VideoPlayerModal(
+        videoUrl: videoUrl,
+        onClose: () {
+          Navigator.pop(context);
+        },
+      ),
+    );
+
+    if (mounted) {
+      await widget.sessionService.resumeActivity();
+      setState(() => _isVideoPlaying = false);
+    }
   }
 
-  Future<void> _initializeActivityAndCalibration() async {
-    try {
-      final storage = CalibrationStorage();
-      final results = await Future.wait([
-        widget.sessionManager.startActivity(
-          externalActivityId: widget.activityOption.externalActivityId,
-          title: widget.activityOption.title,
-          subtitle: widget.activityOption.subtitle,
-          content: widget.activityOption.content,
-          activityType: widget.activityOption.activityType,
-        ),
-        storage.load(),
-      ]);
-
-      final activitySuccess = results[0] as bool;
-      final calibrationData = results[1] as CalibrationResult?;
-
-      if (!activitySuccess) {
-        _error = 'No se pudo iniciar la actividad';
-      } else {
-        _savedCalibration = calibrationData;
-      }
-    } catch (e) {
-      _error = e.toString();
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isInitializing = false;
-        });
-      }
-    }
+  void _toggleCameraVisibility() {
+    setState(() => _isCameraVisible = !_isCameraVisible);
   }
 
   Future<void> _finishActivity() async {
     if (_isFinishing) return;
 
-    setState(() {
-      _isFinishing = true;
-    });
+    setState(() => _isFinishing = true);
 
-    await widget.sessionManager.completeActivity(feedback: {
+    await widget.sessionService.completeActivity({
       'rating': 5,
       'completed': true,
     });
@@ -82,9 +67,7 @@ class _ActivityViewState extends State<ActivityView> {
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
-          builder: (context) => SessionSummaryView(
-            sessionManager: widget.sessionManager,
-          ),
+          builder: (context) => const SessionSummaryView(),
         ),
             (route) => false,
       );
@@ -92,73 +75,14 @@ class _ActivityViewState extends State<ActivityView> {
   }
 
   Future<void> _closeActivity() async {
-    await widget.sessionManager.abandonActivity();
+    await widget.sessionService.abandonActivity();
     if (mounted) {
       Navigator.of(context).popUntil((route) => route.isFirst);
     }
   }
 
-  void _handleVibration() async {
-    final hasVibrator = await Vibration.hasVibrator();
-    if (hasVibrator == true) {
-      Vibration.vibrate(duration: 500);
-    }
-  }
-
-  void _handleVideo(String url, String? title) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title ?? 'Video recomendado'),
-        content: Text('URL: $url'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cerrar'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _openSettings() async {
-    setState(() {
-      _isSettingsOpen = true;
-    });
-
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => SessionConfigView(
-          sessionId: widget.sessionManager.sessionId!,
-          networkService: widget.sessionManager.network,
-        ),
-      ),
-    );
-
-    if (mounted) {
-      setState(() {
-        _isSettingsOpen = false;
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (_isInitializing) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (_error != null) {
-      return Scaffold(
-        body: Center(
-          child: Text('Error: $_error'),
-        ),
-      );
-    }
-
     return Scaffold(
       body: SafeArea(
         child: Stack(
@@ -173,26 +97,24 @@ class _ActivityViewState extends State<ActivityView> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.activityOption.title,
+                          widget.title,
                           style: const TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        if (widget.activityOption.subtitle != null) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            widget.activityOption.subtitle!,
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 8),
                         Text(
-                          widget.activityOption.content ?? '',
-                          style: const TextStyle(
+                          'Tipo: ${widget.activityType}',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        const Text(
+                          'Contenido de la actividad aquí...',
+                          style: TextStyle(
                             fontSize: 18,
                             height: 1.5,
                           ),
@@ -203,24 +125,16 @@ class _ActivityViewState extends State<ActivityView> {
                 ),
               ],
             ),
-            if (!_isFinishing)
-              SentimentAnalysisManager(
-                sessionManager: widget.sessionManager,
-                externalActivityId: widget.activityOption.externalActivityId.toString(),
-                gatewayUrl: EnvConfig.apiGatewayUrl,
-                apiKey: EnvConfig.apiToken,
-                calibration: _savedCalibration,
-                isPaused: _isSettingsOpen,
-                onVibrateRequested: _handleVibration,
-                onVideoReceived: _handleVideo,
-                onSettingsRequested: _openSettings,
-                onConnectionStatusChanged: (connected) {
-                  if (mounted && _isConnected != connected) {
-                    setState(() => _isConnected = connected);
-                  }
-                },
-                onStateChanged: (state) {},
+            if (!_isFinishing && !_isVideoPlaying) ...[
+              if (_isCameraVisible)
+                AnalysisOverlay(sessionService: widget.sessionService),
+              FloatingMenu(
+                sessionService: widget.sessionService,
+                onVideoRequested: _handleVideoRequest,
+                onCameraToggle: _toggleCameraVisibility,
+                isCameraVisible: _isCameraVisible,
               ),
+            ],
           ],
         ),
       ),
@@ -241,9 +155,9 @@ class _ActivityViewState extends State<ActivityView> {
           Container(
             width: 12,
             height: 12,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              color: _isConnected ? Colors.green : Colors.red,
+              color: Colors.green,
             ),
           ),
           const Spacer(),
