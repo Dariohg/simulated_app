@@ -8,8 +8,6 @@ import 'notification_service.dart';
 class SessionService extends ChangeNotifier {
   final SentimentNetworkInterface network;
   final MonitoringWebSocketService websocket;
-
-  // AGREGADO: Declaración explícita del servicio de notificaciones
   final NotificationService notificationService;
 
   String? _sessionId;
@@ -19,7 +17,6 @@ class SessionService extends ChangeNotifier {
   final StreamController<Map<String, dynamic>> _analysisController =
   StreamController<Map<String, dynamic>>.broadcast();
 
-  // Getters
   Stream<InterventionEvent> get interventionStream => websocket.interventionStream;
   Stream<Map<String, dynamic>> get analysisStream => _analysisController.stream;
   String? get sessionId => _sessionId;
@@ -34,7 +31,6 @@ class SessionService extends ChangeNotifier {
     apiKey: apiKey,
   ),
         notificationService = NotificationService() {
-    // Conectar WS con Notificaciones
     websocket.interventionStream.listen((event) {
       notificationService.addNotification(event);
     });
@@ -56,6 +52,7 @@ class SessionService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
+      debugPrint('Error creando sesión: $e');
       return false;
     }
   }
@@ -81,7 +78,7 @@ class SessionService extends ChangeNotifier {
 
       _activityUuid = response['activity_uuid'];
 
-      await websocket.connect(
+      final connected = await websocket.connect(
         sessionId: _sessionId!,
         activityUuid: _activityUuid!,
         userId: _userId!,
@@ -89,8 +86,9 @@ class SessionService extends ChangeNotifier {
       );
 
       notifyListeners();
-      return true;
+      return connected;
     } catch (e) {
+      debugPrint('Error iniciando actividad: $e');
       return false;
     }
   }
@@ -99,6 +97,8 @@ class SessionService extends ChangeNotifier {
     if (_sessionId != null && _activityUuid != null) {
       _analysisController.add(frameData);
       websocket.sendFrame(frameData);
+    } else {
+      // Ignorar frames si la actividad no ha iniciado completamente
     }
   }
 
@@ -137,15 +137,11 @@ class SessionService extends ChangeNotifier {
     }
   }
 
-  // AGREGADO: Método que faltaba en HomeViewModel
   Future<void> finalizeSession() async {
     if (_sessionId != null) {
       if (_activityUuid != null) {
         await abandonActivity();
       }
-      // Llamada al endpoint de finalizar sesión si existe en tu API
-      // await network.finalizeSession(_sessionId!);
-
       await websocket.disconnect();
       _sessionId = null;
       _userId = null;

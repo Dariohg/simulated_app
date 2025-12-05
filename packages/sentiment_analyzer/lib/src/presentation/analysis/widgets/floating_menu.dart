@@ -58,20 +58,47 @@ class _FloatingMenuState extends State<FloatingMenu> {
   }
 
   Widget _buildMenuButton() {
-    return Container(
-      width: 50,
-      height: 50,
-      decoration: BoxDecoration(
-        color: Colors.blue,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3), // CORREGIDO
-            blurRadius: 8,
-          ),
-        ],
-      ),
-      child: const Icon(Icons.menu, color: Colors.white),
+    return ListenableBuilder(
+      listenable: widget.sessionService.notificationService,
+      builder: (context, _) {
+        // Mostrar punto rojo si hay no leídas y el menú está CERRADO
+        final bool showBadge = widget.sessionService.notificationService.hasUnread && !_isMenuOpen;
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: Colors.blue,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              child: Icon(_isMenuOpen ? Icons.close : Icons.menu, color: Colors.white),
+            ),
+            if (showBadge)
+              Positioned(
+                right: 0,
+                top: 0,
+                child: Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -84,7 +111,7 @@ class _FloatingMenuState extends State<FloatingMenu> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2), // CORREGIDO
+            color: Colors.black.withValues(alpha: 0.2),
             blurRadius: 8,
           ),
         ],

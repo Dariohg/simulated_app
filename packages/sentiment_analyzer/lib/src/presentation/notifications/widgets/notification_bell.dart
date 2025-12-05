@@ -20,15 +20,19 @@ class NotificationBell extends StatelessWidget {
       listenable: notificationService,
       builder: (context, _) {
         return Stack(
+          alignment: Alignment.center,
           clipBehavior: Clip.none,
           children: [
             IconButton(
               icon: const Icon(Icons.notifications),
-              color: Colors.white,
+              // CORRECCIÓN: Color explícito visible (Azul) para que no se pierda en el fondo blanco
+              color: Colors.blue,
+              // Si no hay notificaciones, onPressed es null y el color se atenúa automáticamente
               onPressed: notificationService.hasUnread
                   ? () => _showNotificationModal(context)
                   : null,
             ),
+
             if (notificationService.hasUnread)
               Positioned(
                 right: 8,
@@ -52,7 +56,6 @@ class NotificationBell extends StatelessWidget {
   void _showNotificationModal(BuildContext context) {
     showDialog(
       context: context,
-      barrierDismissible: false,
       builder: (context) => NotificationModal(
         notificationService: notificationService,
         onVideoRequested: onVideoRequested,

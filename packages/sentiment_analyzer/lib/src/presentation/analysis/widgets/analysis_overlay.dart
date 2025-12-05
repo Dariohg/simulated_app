@@ -55,64 +55,60 @@ class _AnalysisOverlayState extends State<AnalysisOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_viewModel.isInitialized) return const SizedBox.shrink();
+    if (!_viewModel.isInitialized) return const SizedBox(width: 120, height: 160);
 
     final controller = _viewModel.cameraController;
     final state = _viewModel.currentState;
 
-    if (controller == null) return const SizedBox.shrink();
+    if (controller == null) return const SizedBox(width: 120, height: 160);
 
-    return Positioned(
-      bottom: 16,
-      left: 16,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (state != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _buildDetailedInfoPanel(state),
-            ),
-          Container(
-            width: 120,
-            height: 160,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white, width: 2),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.2), // CORREGIDO: withValues
-                  blurRadius: 8,
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  CameraPreview(controller),
-                  if (state != null)
-                    Positioned(
-                      bottom: 4,
-                      left: 4,
-                      child: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: state.faceDetected ? Colors.green : Colors.red,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white),
-                        ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (state != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _buildDetailedInfoPanel(state),
+          ),
+        Container(
+          width: 120,
+          height: 160,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 8,
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                CameraPreview(controller),
+                if (state != null)
+                  Positioned(
+                    bottom: 4,
+                    left: 4,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: state.faceDetected ? Colors.green : Colors.red,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white),
                       ),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -126,7 +122,6 @@ class _AnalysisOverlayState extends State<AnalysisOverlay> {
     }
 
     String emotionText = state.emotion;
-    // Mapeo simple de emociones
     if (state.emotion.toLowerCase() == 'angry') emotionText = "ENOJADO";
     if (state.emotion.toLowerCase() == 'sad') emotionText = "TRISTE";
     if (state.emotion.toLowerCase() == 'happy') emotionText = "FELIZ";
@@ -137,7 +132,7 @@ class _AnalysisOverlayState extends State<AnalysisOverlay> {
       decoration: BoxDecoration(
         color: Colors.black87,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: statusColor.withValues(alpha: 0.6)), // CORREGIDO
+        border: Border.all(color: statusColor.withValues(alpha: 0.6)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -169,8 +164,18 @@ class _AnalysisOverlayState extends State<AnalysisOverlay> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 9)),
-          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 9)),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white70, fontSize: 9),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w500,
+              fontSize: 9,
+            ),
+          ),
         ],
       ),
     );

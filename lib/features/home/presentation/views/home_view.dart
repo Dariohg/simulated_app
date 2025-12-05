@@ -6,6 +6,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../viewmodels/home_view_model.dart';
 import '../../../calibration/presentation/views/calibration_view.dart';
 import '../../../activity/presentation/views/activity_view.dart';
+import '../../../config/presentation/views/config_view.dart'; // Import nuevo
 import 'package:sentiment_analyzer/sentiment_analyzer.dart';
 
 class HomeView extends StatefulWidget {
@@ -16,42 +17,35 @@ class HomeView extends StatefulWidget {
 }
 
 class _HomeViewState extends State<HomeView> {
-  // 1. Instancia local del ViewModel (Sin Provider)
   final HomeViewModel _viewModel = HomeViewModel();
   final CalibrationStorage _calibrationStorage = CalibrationStorage();
 
   @override
   void initState() {
     super.initState();
-    // 2. Inicialización directa
     _viewModel.initializeSession(MockUser.id, MockUser.disabilityType);
   }
 
   Future<void> _onActivitySelected(ActivityOption activity) async {
-    if (_viewModel.sessionService == null) return;
+    if (_viewModel.sessionService == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Iniciando sesión, por favor espera...")),
+      );
+      return;
+    }
 
     final savedCalibration = await _calibrationStorage.load();
 
     if (!mounted) return;
 
     if (savedCalibration != null && savedCalibration.isSuccessful) {
-      await _viewModel.sessionService!.startActivity(
-        externalActivityId: activity.externalActivityId,
-        title: activity.title,
-        activityType: activity.activityType,
-        subtitle: activity.subtitle,
-        content: activity.content,
-      );
-
-      if (!mounted) return;
-
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => ActivityView(
             sessionService: _viewModel.sessionService!,
             userId: MockUser.id,
-            activityOption: activity, // Pasamos el objeto completo
+            activityOption: activity,
           ),
         ),
       );
@@ -98,6 +92,15 @@ class _HomeViewState extends State<HomeView> {
     }
   }
 
+  void _goToSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ConfigView(userId: MockUser.id),
+      ),
+    );
+  }
+
   IconData _getIconForActivityType(String activityType) {
     switch (activityType) {
       case 'LECTURA':
@@ -117,7 +120,11 @@ class _HomeViewState extends State<HomeView> {
       appBar: AppBar(
         title: const Text("Monitor Cognitivo"),
         actions: [
-          // Usamos ListenableBuilder para partes reactivas específicas
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: _goToSettings,
+            tooltip: 'Configuración',
+          ),
           ListenableBuilder(
             listenable: _viewModel,
             builder: (context, _) {
@@ -132,7 +139,6 @@ class _HomeViewState extends State<HomeView> {
           ),
         ],
       ),
-      // 3. ListenableBuilder escucha cambios en _viewModel sin Provider
       body: ListenableBuilder(
         listenable: _viewModel,
         builder: (context, _) {

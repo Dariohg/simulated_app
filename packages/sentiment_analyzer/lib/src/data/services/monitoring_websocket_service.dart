@@ -85,6 +85,7 @@ class MonitoringWebSocketService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
+      debugPrint('WS Connect Error: $e');
       _status = WebSocketStatus.error;
       notifyListeners();
       return false;
@@ -112,11 +113,12 @@ class MonitoringWebSocketService extends ChangeNotifier {
     });
 
     try {
-      _channel!.sink.add(jsonEncode({
+      final handshakePayload = jsonEncode({
         "type": "handshake",
         "user_id": userId,
         "external_activity_id": externalActivityId
-      }));
+      });
+      _channel!.sink.add(handshakePayload);
       final result = await completer.future;
       await subscription.cancel();
       return result;
@@ -140,19 +142,29 @@ class MonitoringWebSocketService extends ChangeNotifier {
       if (type == 'intervention' || type == 'haptic_nudge') {
         _interventionController.add(InterventionEvent.fromJson(data));
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('WS Message Error: $e');
+    }
   }
 
   void sendFrame(Map<String, dynamic> frameData) {
     if (_status != WebSocketStatus.ready || _isPaused) return;
+
     try {
-      frameData['metadata'] ??= {};
-      frameData['metadata']['timestamp'] = DateTime.now().toIso8601String();
-      frameData['metadata']['user_id'] = _userId;
-      frameData['metadata']['session_id'] = _currentSessionId;
-      frameData['metadata']['external_activity_id'] = _externalActivityId;
+      // CORRECCIÓN DEFENSIVA: Asegurar que metadata sea mutable y dinámico
+      final metadata = Map<String, dynamic>.from(frameData['metadata'] ?? {});
+
+      metadata['timestamp'] = DateTime.now().toIso8601String();
+      metadata['user_id'] = _userId;
+      metadata['session_id'] = _currentSessionId;
+      metadata['external_activity_id'] = _externalActivityId;
+
+      frameData['metadata'] = metadata;
+
       _channel?.sink.add(jsonEncode(frameData));
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('WS Send Error: $e');
+    }
   }
 
   void pauseTransmission() => _isPaused = true;
@@ -162,13 +174,28 @@ class MonitoringWebSocketService extends ChangeNotifier {
     _pingTimer?.cancel();
     _pingTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (_status == WebSocketStatus.ready) {
-        _channel?.sink.add(jsonEncode({"type": "ping", "timestamp": DateTime.now().millisecondsSinceEpoch ~/ 1000}));
+        try {
+          _channel?.sink.add(jsonEncode({
+            "type": "ping",
+            "timestamp": DateTime.now().millisecondsSinceEpoch ~/ 1000
+          }));
+        } catch (_) {}
       }
     });
   }
 
-  void _handleError(error) { _status = WebSocketStatus.error; notifyListeners(); _attemptReconnect(); }
-  void _handleDone() { _status = WebSocketStatus.disconnected; notifyListeners(); _attemptReconnect(); }
+  void _handleError(error) {
+    debugPrint('WS Error: $error');
+    _status = WebSocketStatus.error;
+    notifyListeners();
+    _attemptReconnect();
+  }
+
+  void _handleDone() {
+    _status = WebSocketStatus.disconnected;
+    notifyListeners();
+    _attemptReconnect();
+  }
 
   void _attemptReconnect() {
     if (_reconnectAttempts >= 5 || _currentSessionId == null) return;
@@ -176,7 +203,12 @@ class MonitoringWebSocketService extends ChangeNotifier {
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(const Duration(seconds: 3), () {
       if (_currentActivityUuid != null) {
-        connect(sessionId: _currentSessionId!, activityUuid: _currentActivityUuid!, userId: _userId!, externalActivityId: _externalActivityId!);
+        connect(
+            sessionId: _currentSessionId!,
+            activityUuid: _currentActivityUuid!,
+            userId: _userId!,
+            externalActivityId: _externalActivityId!
+        );
       }
     });
   }

@@ -29,28 +29,21 @@ class _ActivityViewState extends State<ActivityView> {
   @override
   void initState() {
     super.initState();
-    _setupInterventions();
+    _startActivity();
   }
 
-  void _setupInterventions() {
-    // Escuchamos eventos del WebSocket
+  Future<void> _startActivity() async {
+    await widget.sessionService.startActivity(
+      externalActivityId: widget.activityOption.externalActivityId,
+      title: widget.activityOption.title,
+      activityType: widget.activityOption.activityType,
+    );
+
     _interventionSubscription = widget.sessionService.interventionStream.listen((event) {
       if (!mounted) return;
 
       if (event.vibrationEnabled) {
         Vibration.vibrate(duration: 500);
-      }
-
-      // Notificación visual discreta (SnackBar)
-      if ((event.videoUrl != null && event.videoUrl!.isNotEmpty) ||
-          (event.displayText != null && event.displayText!.isNotEmpty)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Nueva recomendación disponible. Revisa la campana."),
-            backgroundColor: Colors.blue,
-            duration: Duration(seconds: 3),
-          ),
-        );
       }
     });
   }
@@ -142,10 +135,19 @@ class _ActivityViewState extends State<ActivityView> {
                 ),
               ],
             ),
-            if (!_isFinishing && _isCameraVisible)
-              AnalysisOverlay(
-                sessionService: widget.sessionService,
+
+            if (!_isFinishing)
+              Positioned(
+                bottom: 16,
+                left: 16,
+                child: Offstage(
+                  offstage: !_isCameraVisible,
+                  child: AnalysisOverlay(
+                    sessionService: widget.sessionService,
+                  ),
+                ),
               ),
+
             if (!_isFinishing)
               FloatingMenu(
                 sessionService: widget.sessionService,

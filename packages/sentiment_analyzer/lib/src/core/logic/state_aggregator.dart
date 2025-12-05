@@ -32,7 +32,8 @@ class CombinedState {
         [];
 
     return {
-      'metadata': {
+      // CORRECCIÓN AQUÍ: Definir explícitamente <String, dynamic>
+      'metadata': <String, dynamic>{
         'timestamp': DateTime.now().toUtc().toIso8601String(),
       },
       'analisis_sentimiento': {
