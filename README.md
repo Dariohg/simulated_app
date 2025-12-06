@@ -5,14 +5,14 @@
 
 ## 1. Descripción del Proyecto
 
-Simulated App es una aplicación móvil desarrollada en **Flutter** que sirve como entorno de ejecución y validación para el motor de análisis biométrico `sentiment_analyzer`. La aplicación simula una plataforma educativa o de teletrabajo donde se monitorea en tiempo real el estado cognitivo (atención, somnolencia, emoción) del usuario a través de la cámara frontal, sin almacenar video en el servidor.
+Simulated App es una aplicación móvil desarrollada en **Flutter** que sirve como entorno de ejecución y validación para el motor de análisis biométrico `sentiment_analyzer`. La aplicación simula una plataforma educativa donde se monitorea en tiempo real el estado cognitivo (atención, somnolencia, emoción) del usuario a través de la cámara frontal, sin almacenar video en el servidor.
 
 El sistema implementa una arquitectura distribuida donde el procesamiento pesado de visión por computadora ocurre en el dispositivo (Edge AI), enviando únicamente metadatos de telemetría ligera al servidor para su análisis longitudinal y respuesta inmediata (intervenciones).
 
 
 ## 2. Funcionalidades del Cliente
 
-* **Perfilado de Usuarios:** Configuración de sesiones adaptadas a condiciones específicas (ej. TDAH, Fatiga Crónica) para ajustar los umbrales de sensibilidad del análisis.
+* **Perfilado de Usuarios:** Configuración de sesiones adaptadas a condiciones específicas.
 * **Simulación de Actividades:** Módulos interactivos (Lectura, Cálculo, Seguimiento Visual) diseñados para provocar respuestas cognitivas medibles.
 * **Feedback en Tiempo Real:** Sistema de superposición (Overlay) que presenta métricas de depuración biométrica sobre la actividad en curso.
 * **Gestión de Intervenciones:** Recepción y ejecución de comandos remotos (WebSocket) para mostrar alertas, pausas o contenido multimedia terapéutico.

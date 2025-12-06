@@ -72,6 +72,9 @@ class AnalysisViewModel extends ChangeNotifier {
     if (_isDisposed) return;
 
     await _emotionService.loadModel();
+
+    await _cameraReadySubscription?.cancel();
+
     _cameraReadySubscription = _cameraService.onCameraReady.listen((isReady) {
       if (isReady && !_isDisposed) {
         _isInitialized = true;
@@ -79,6 +82,7 @@ class AnalysisViewModel extends ChangeNotifier {
         notifyListeners();
       }
     });
+
     await _cameraService.initializeCamera();
   }
 
@@ -207,7 +211,7 @@ class AnalysisViewModel extends ChangeNotifier {
     await _cameraReadySubscription?.cancel();
     _cameraReadySubscription = null;
 
-    await _cameraService.dispose();
+    await _cameraService.stopCamera();
     _faceMeshService.dispose();
     _emotionService.dispose();
 

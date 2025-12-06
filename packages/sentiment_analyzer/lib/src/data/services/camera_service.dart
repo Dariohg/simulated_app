@@ -14,16 +14,25 @@ class CameraService {
   Stream<bool> get onCameraReady => _cameraReadyController.stream;
 
   bool _isDisposed = false;
+  bool _isInitializing = false;
 
   Future<void> initializeCamera() async {
     if (_isDisposed) return;
 
+    if (_isInitializing) return;
+    _isInitializing = true;
+
     try {
+      if (_controller != null && _controller!.value.isInitialized) {
+        _cameraReadyController.add(true);
+        return;
+      }
+
       final cameras = await availableCameras();
 
       if (cameras.isEmpty) {
         debugPrint('[CameraService] ERROR: No se encontraron camaras');
-        _cameraReadyController.add(false);
+        if (!_isDisposed) _cameraReadyController.add(false);
         return;
       }
 
@@ -51,6 +60,8 @@ class CameraService {
       if (!_isDisposed) {
         _cameraReadyController.add(false);
       }
+    } finally {
+      _isInitializing = false;
     }
   }
 
@@ -65,6 +76,19 @@ class CameraService {
     }
   }
 
+  Future<void> stopCamera() async {
+    await stopImageStreamAsync();
+
+    if (_controller != null) {
+      try {
+        await _controller!.dispose();
+      } catch (e) {
+        debugPrint('[CameraService] Error haciendo dispose del controller: $e');
+      }
+      _controller = null;
+    }
+  }
+
   void stopImageStream() {
     if (_controller?.value.isStreamingImages == true) {
       try {
@@ -75,25 +99,20 @@ class CameraService {
     }
   }
 
-  Future<void> dispose() async {
-    _isDisposed = true;
-
-    await stopImageStreamAsync();
-
-    await _controller?.dispose();
-    _controller = null;
-
-    await _cameraReadyController.close();
-  }
-
   Future<void> stopImageStreamAsync() async {
     if (_controller?.value.isStreamingImages == true) {
       try {
         await _controller?.stopImageStream();
         await Future.delayed(const Duration(milliseconds: 100));
       } catch (e) {
-        debugPrint('[CameraService] Error deteniendo stream: $e');
+        debugPrint('[CameraService] Error deteniendo stream async: $e');
       }
     }
+  }
+
+  Future<void> dispose() async {
+    _isDisposed = true;
+    await stopCamera();
+    await _cameraReadyController.close();
   }
 }
